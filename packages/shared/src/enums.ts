@@ -9,6 +9,7 @@ export const PropertyType = {
   LAND: 'LAND',
   COMMERCIAL: 'COMMERCIAL',
   OFFICE: 'OFFICE',
+  OTHER: 'OTHER',
 } as const;
 export type PropertyType = (typeof PropertyType)[keyof typeof PropertyType];
 
@@ -28,8 +29,6 @@ export type Currency = (typeof Currency)[keyof typeof Currency];
 export const PropertyStatus = {
   DRAFT: 'DRAFT',
   PUBLISHED: 'PUBLISHED',
-  RESERVED: 'RESERVED',
-  SOLD: 'SOLD',
   ARCHIVED: 'ARCHIVED',
 } as const;
 export type PropertyStatus = (typeof PropertyStatus)[keyof typeof PropertyStatus];
@@ -55,5 +54,18 @@ export const LeadSource = {
   WHATSAPP: 'WHATSAPP',
   PHONE: 'PHONE',
   REFERRAL: 'REFERRAL',
+  OTHER: 'OTHER',
 } as const;
 export type LeadSource = (typeof LeadSource)[keyof typeof LeadSource];
+
+export const LeadActivityKind = {
+  NOTE: 'NOTE',
+  CALL: 'CALL',
+  EMAIL: 'EMAIL',
+  WHATSAPP: 'WHATSAPP',
+  MEETING: 'MEETING',
+  STATUS_CHANGE: 'STATUS_CHANGE',
+  ASSIGNMENT: 'ASSIGNMENT',
+  CREATED: 'CREATED',
+} as const;
+export type LeadActivityKind = (typeof LeadActivityKind)[keyof typeof LeadActivityKind];

@@ -7,7 +7,10 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
+import { LeadsModule } from './modules/leads/leads.module';
 import { PlatformAdminModule } from './modules/platform-admin/platform-admin.module';
+import { PropertiesModule } from './modules/properties/properties.module';
+import { StorageModule } from './modules/storage/storage.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -21,6 +24,9 @@ import { PrismaModule } from './prisma/prisma.module';
     AuthModule,
     PlatformAdminModule,
     TenantsModule,
+    StorageModule,
+    PropertiesModule,
+    LeadsModule,
     HealthModule,
   ],
   providers: [

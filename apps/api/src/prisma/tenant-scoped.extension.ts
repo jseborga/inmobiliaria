@@ -7,7 +7,13 @@ import { getTenantContext } from '../common/tenant/tenant-context';
  * en el servicio de auth porque algunas operaciones ocurren antes de tener
  * un contexto de tenant consolidado.
  */
-const TENANT_SCOPED_MODELS = new Set<string>(['User']);
+const TENANT_SCOPED_MODELS = new Set<string>([
+  'User',
+  'Property',
+  'PropertyImage',
+  'Lead',
+  'LeadActivity',
+]);
 
 function shouldScope(model: string | undefined): boolean {
   return !!model && TENANT_SCOPED_MODELS.has(model);

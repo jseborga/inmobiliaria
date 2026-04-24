@@ -45,13 +45,19 @@ pnpm db:up
 
 # 4. Generar cliente Prisma y correr migración inicial
 pnpm --filter @inmobiliaria/api prisma:generate
-pnpm --filter @inmobiliaria/api exec prisma migrate dev --name init_auth
+pnpm --filter @inmobiliaria/api exec prisma migrate dev --name init
+
+# 4b. Aplicar triggers PostGIS (idempotente). Requiere extensión `postgis` habilitada.
+pnpm --filter @inmobiliaria/api db:postgis-triggers
 
 # 5. Sembrar el primer super-admin (lee SUPER_ADMIN_* de apps/api/.env)
 pnpm --filter @inmobiliaria/api prisma:seed
 
 # 6. Levantar todo en modo dev
 pnpm dev
+
+# 7. (opcional) Smoke test end-to-end contra la API
+bash scripts/smoke-test.sh
 ```
 
 - API: http://localhost:3001/api/health
@@ -73,10 +79,10 @@ pnpm dev
 
 - **Fase 1:** Diseño (completado)
 - **Fase 2:** Setup monorepo e infra base (completado)
-- **Fase 3:** Auth + multi-tenancy core (actual)
-- **Fase 4:** Gestión de propiedades (admin)
-- **Fase 5:** Portal público + búsqueda
-- **Fase 6:** CRM de leads
+- **Fase 3:** Auth + multi-tenancy core (completado)
+- **Fase 4:** Gestión de propiedades + upload de imágenes (completado)
+- **Fase 5:** Portal público + búsqueda (API completa; UI pendiente)
+- **Fase 6:** CRM de leads (API + captura pública completos)
 - **Fase 7:** Observabilidad + deploy producción
 
 ## Convenciones
@@ -134,6 +140,115 @@ Hay **dos tipos de sujetos autenticados**, distinguidos por el claim `kind` en e
 
 ### Tokens
 
+
 - **Access token:** JWT firmado con `JWT_ACCESS_SECRET`, TTL corto (`JWT_ACCESS_TTL`, default `15m`). Se envía en `Authorization: Bearer <token>`.
 - **Refresh token:** string opaco de alta entropía, guardado hasheado (SHA-256) en DB. Vive en cookie `httpOnly` + `sameSite=strict`. TTL por `JWT_REFRESH_TTL` (default `7d`). Rotado en cada `/refresh` (el anterior se marca `revokedAt`).
 - Cookies separadas para cada tipo de sujeto (`refresh_token` vs `platform_refresh_token`), con `path` aislado.
+
+## Propiedades y marketplace (Fase 4 + 5 API)
+
+### CRUD admin (tenant-scoped)
+
+Todas las rutas debajo requieren `Authorization: Bearer <accessToken>` de un usuario del tenant.
+
+| Método | Ruta | Roles | Descripción |
+|---|---|---|---|
+| GET    | `/api/properties` | cualquier tenant user | Lista paginada con filtros |
+| GET    | `/api/properties/:id` | cualquier tenant user | Detalle con imágenes |
+| POST   | `/api/properties` | OWNER/ADMIN/AGENT | Crea (status default `DRAFT`) |
+| PUT    | `/api/properties/:id` | OWNER/ADMIN/AGENT | Update parcial (transiciona status) |
+| DELETE | `/api/properties/:id` | OWNER/ADMIN | Borra propiedad + imágenes |
+| POST   | `/api/properties/:id/images/presign` | OWNER/ADMIN/AGENT | Pide URL presigned para subir imagen |
+| POST   | `/api/properties/:id/images` | OWNER/ADMIN/AGENT | Confirma imagen subida (persiste en DB) |
+| DELETE | `/api/properties/:id/images/:imageId` | OWNER/ADMIN/AGENT | Borra imagen |
+
+Filtros del listado (`GET /api/properties?...`): `status`, `operation`, `type`, `currency`, `city`, `zone`, `q` (texto libre), `minPrice`, `maxPrice`, `bedrooms`, `bathrooms`, `nearLat`/`nearLng`/`radiusKm` (búsqueda geoespacial vía PostGIS), `take`, `skip`.
+
+### Marketplace público (Fase 5 API)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/api/public/properties` | Listado global (todos los tenants) con `status=PUBLISHED`. Acepta los mismos filtros del admin. Si el request trae `X-Tenant-Slug` o subdominio, se filtra por ese tenant (sitio por inmobiliaria). |
+| GET | `/api/public/properties/:slug?tenantSlug=...` | Detalle por slug. Requiere saber el tenant (subdominio, header `X-Tenant-Slug` o query `tenantSlug`). |
+
+### Upload de imágenes
+
+Flujo en 3 pasos (presigned PUT, sin que el archivo pase por la API):
+
+```
+1. POST /api/properties/:id/images/presign
+   body: { contentType: "image/jpeg", contentLength: <bytes> }
+   → { uploadUrl, method: "PUT", headers, r2Key, publicUrl, expiresIn }
+
+2. PUT <uploadUrl>  con los headers indicados y el body del archivo
+   → 200 OK  (ida directa a R2 o al mock local)
+
+3. POST /api/properties/:id/images
+   body: { r2Key, publicUrl, order?, width?, height? }
+   → { id, r2Key, publicUrl, ... }
+```
+
+**Storage driver**: si las 5 vars `R2_*` están configuradas, firma contra Cloudflare R2. Si no, cae a un mock local que guarda bajo `storage/uploads/` y sirve en `/api/_mock-storage/:key`. Esto permite probar el flow completo en dev sin R2.
+
+Content types aceptados: `image/jpeg`, `image/png`, `image/webp`, `image/avif`. Tamaño máximo: 10 MB.
+
+### Búsqueda geoespacial
+
+Se implementa con PostGIS (`ST_DWithin` + `ST_Distance`). Un trigger (`apps/api/prisma/sql/postgis-triggers.sql`) mantiene la columna `properties.location` sincronizada con `latitude/longitude`. Aplicar una sola vez post-migración con:
+
+```bash
+pnpm --filter @inmobiliaria/api db:postgis-triggers
+```
+
+## CRM de leads (Fase 6)
+
+Gestión de contactos comerciales capturados desde el marketplace o ingresados manualmente, con timeline de actividades por lead.
+
+### Modelo
+
+- **Lead**: contacto (nombre, email, phone, mensaje), opcionalmente ligado a una `Property`. Campos de auditoría `source_ip`, `source_user_agent`, `source_referrer` para leads públicos. Enums:
+  - `LeadStatus`: `NEW`, `CONTACTED`, `QUALIFIED`, `CONVERTED`, `LOST`
+  - `LeadSource`: `WEB`, `WHATSAPP`, `PHONE`, `REFERRAL`, `OTHER`
+- **LeadActivity**: entrada del timeline (`NOTE`, `CALL`, `EMAIL`, `WHATSAPP`, `MEETING` — manuales; `CREATED`, `STATUS_CHANGE`, `ASSIGNMENT` — automáticas emitidas por el service).
+
+### Captura pública (sin auth)
+
+```
+POST /api/public/leads
+{
+  "tenantSlug": "demo",          // opcional si hay subdominio/X-Tenant-Slug
+  "propertyId": "cktid...",      // opcional (resuelve tenant si no lo hay)
+  "firstName": "Juan",
+  "lastName":  "Pérez",
+  "email":     "juan@example.com",
+  "phone":     "+59170000000",
+  "message":   "Me interesa, ¿está disponible?",
+  "source":    "WEB"
+}
+→ 201 { id, createdAt }
+```
+
+Resolución del tenant, en orden: middleware (subdominio/header) → `tenantSlug` → `tenantId` de la `propertyId`. Debe venir al menos uno de `email` o `phone`. Se crea automáticamente una actividad `CREATED` con metadata del origen.
+
+### CRUD admin (tenant-scoped)
+
+Todas las rutas requieren `Authorization: Bearer <accessToken>` de un usuario del tenant.
+
+| Método | Ruta | Roles | Descripción |
+|---|---|---|---|
+| GET    | `/api/leads` | cualquier tenant user | Lista paginada con filtros |
+| GET    | `/api/leads/:id` | cualquier tenant user | Detalle con timeline de actividades |
+| POST   | `/api/leads` | OWNER/ADMIN/AGENT | Crea lead manual (ej. walk-in, llamada) |
+| PATCH  | `/api/leads/:id` | OWNER/ADMIN/AGENT | Actualiza status, asignación, contacto |
+| DELETE | `/api/leads/:id` | OWNER/ADMIN | Borra lead (cascada a actividades) |
+| POST   | `/api/leads/:id/activities` | OWNER/ADMIN/AGENT | Registra actividad manual (NOTE/CALL/EMAIL/WHATSAPP/MEETING) |
+
+Filtros del listado: `status`, `source`, `propertyId`, `assignedUserId` (acepta `me` para filtrar por el usuario actual), `q` (búsqueda libre en nombre/email/teléfono/mensaje), `take`, `skip`.
+
+Eventos automáticos emitidos por el service:
+
+- Cambio de `status` → crea actividad `STATUS_CHANGE` con `{from, to}` en metadata.
+- Cambio de `assignedUserId` (incluye desasignar con `null`) → crea actividad `ASSIGNMENT`.
+- Actividades de contacto real (`CALL`/`EMAIL`/`WHATSAPP`/`MEETING`) actualizan `lead.lastContactedAt`.
+
+Los kinds `CREATED`, `STATUS_CHANGE` y `ASSIGNMENT` están reservados al sistema: intentar emitirlos manualmente por `/activities` devuelve `403`.
