@@ -1,0 +1,21 @@
+// Prisma schema — Fase 2: solo setup básico.
+// El modelo completo (Tenant, User, Property, Lead, etc.) se construye en Fase 3+.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Placeholder para verificar conectividad en Fase 2.
+/// Se reemplaza por el modelo real de dominio en la Fase 3.
+model HealthPing {
+  id        String   @id @default(cuid())
+  message   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("health_pings")
+}
