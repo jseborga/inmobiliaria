@@ -1,6 +1,14 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { TenantContextInterceptor } from './common/tenant/tenant-context.interceptor';
+import { TenantResolverMiddleware } from './common/tenant/tenant.middleware';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { RolesGuard } from './common/guards/roles.guard';
+import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
+import { PlatformAdminModule } from './modules/platform-admin/platform-admin.module';
+import { TenantsModule } from './modules/tenants/tenants.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -10,7 +18,19 @@ import { PrismaModule } from './prisma/prisma.module';
       envFilePath: ['.env.local', '.env'],
     }),
     PrismaModule,
+    AuthModule,
+    PlatformAdminModule,
+    TenantsModule,
     HealthModule,
   ],
+  providers: [
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },
+  ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(TenantResolverMiddleware).forRoutes('*');
+  }
+}

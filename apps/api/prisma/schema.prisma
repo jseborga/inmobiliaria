@@ -1,5 +1,5 @@
-// Prisma schema — Fase 2: solo setup básico.
-// El modelo completo (Tenant, User, Property, Lead, etc.) se construye en Fase 3+.
+// Prisma schema — Fase 3: Tenant, User, PlatformAdmin, RefreshToken, PlatformRefreshToken.
+// Los modelos de negocio (Property, Lead, etc.) se agregan en Fase 4+.
 
 generator client {
   provider = "prisma-client-js"
@@ -10,12 +10,129 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Placeholder para verificar conectividad en Fase 2.
-/// Se reemplaza por el modelo real de dominio en la Fase 3.
-model HealthPing {
-  id        String   @id @default(cuid())
-  message   String
-  createdAt DateTime @default(now()) @map("created_at")
+enum UserRole {
+  OWNER
+  ADMIN
+  AGENT
+}
 
-  @@map("health_pings")
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum TenantPlan {
+  FREE
+  PRO
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum PlatformAdminStatus {
+  ACTIVE
+  DISABLED
+}
+
+/// Empresa inmobiliaria (tenant).
+model Tenant {
+  id        String       @id @default(cuid())
+  slug      String       @unique
+  name      String
+  logoUrl   String?      @map("logo_url")
+  phone     String?
+  email     String?
+  address   String?
+  city      String?
+  status    TenantStatus @default(ACTIVE)
+  plan      TenantPlan   @default(FREE)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  users         User[]
+  refreshTokens RefreshToken[]
+
+  @@map("tenants")
+}
+
+/// Usuario perteneciente a un tenant (OWNER / ADMIN / AGENT).
+model User {
+  id           String     @id @default(cuid())
+  tenantId     String     @map("tenant_id")
+  email        String
+  passwordHash String     @map("password_hash")
+  firstName    String     @map("first_name")
+  lastName     String     @map("last_name")
+  phone        String?
+  avatarUrl    String?    @map("avatar_url")
+  role         UserRole   @default(AGENT)
+  status       UserStatus @default(ACTIVE)
+  lastLoginAt  DateTime?  @map("last_login_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
+
+  // Email único dentro de un mismo tenant (el mismo email puede existir en tenants distintos)
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+/// Refresh tokens almacenados con hash para rotación y revocación.
+model RefreshToken {
+  id        String    @id @default(cuid())
+  tenantId  String    @map("tenant_id")
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  userAgent String?   @map("user_agent")
+  ip        String?
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tenantId])
+  @@map("refresh_tokens")
+}
+
+/// Administrador de plataforma (super-admin global, no pertenece a ningún tenant).
+/// Solo este rol puede crear/suspender tenants y hacer onboarding de inmobiliarias.
+model PlatformAdmin {
+  id           String              @id @default(cuid())
+  email        String              @unique
+  passwordHash String              @map("password_hash")
+  firstName    String              @map("first_name")
+  lastName     String              @map("last_name")
+  status       PlatformAdminStatus @default(ACTIVE)
+  lastLoginAt  DateTime?           @map("last_login_at")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  refreshTokens PlatformRefreshToken[]
+
+  @@map("platform_admins")
+}
+
+/// Refresh tokens de platform admin (separados de los de tenant users).
+model PlatformRefreshToken {
+  id        String    @id @default(cuid())
+  adminId   String    @map("admin_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  userAgent String?   @map("user_agent")
+  ip        String?
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  admin PlatformAdmin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@map("platform_refresh_tokens")
 }

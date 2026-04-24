@@ -2,11 +2,13 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: ['error', 'warn', 'log', 'debug'],
   });
 
@@ -19,8 +21,12 @@ async function bootstrap() {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
+  // Necesario para que req.ip refleje la IP real detr\u00e1s de Nginx en prod.
+  app.set('trust proxy', 1);
+
   app.setGlobalPrefix(apiPrefix);
   app.use(helmet());
+  app.use(cookieParser());
   app.enableCors({
     origin: corsOrigins,
     credentials: true,

@@ -14,7 +14,7 @@ export class HealthController {
   }> {
     let db: 'up' | 'down' = 'down';
     try {
-      await this.prisma.$queryRaw`SELECT 1`;
+      await this.prisma.raw.$queryRaw`SELECT 1`;
       db = 'up';
     } catch {
       db = 'down';
