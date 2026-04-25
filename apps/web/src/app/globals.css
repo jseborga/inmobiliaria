@@ -76,3 +76,41 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Property map markers (Leaflet DivIcon)
+ *
+ * Tailwind no procesa clases dentro del HTML que pasamos a `L.divIcon`
+ * (es runtime), pero las clases utilitarias de color (bg-emerald-500, etc.)
+ * sí están en el bundle porque las usa otra parte del UI. La forma del pin
+ * se define acá.
+ * --------------------------------------------------------------------------- */
+.property-marker {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: auto;
+}
+.property-marker-body {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+}
+.property-marker-tail {
+  width: 8px;
+  height: 8px;
+  margin-top: -3px;
+  transform: rotate(45deg);
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.18);
+}
+.property-marker:hover .property-marker-body {
+  transform: scale(1.05);
+  transition: transform 120ms ease-out;
+}

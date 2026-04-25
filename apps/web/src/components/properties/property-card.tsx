@@ -1,23 +1,28 @@
 import Link from 'next/link';
 import { MapPin, BedDouble, Bath, Ruler } from 'lucide-react';
-import type { PropertyDto, TenantSummary } from '@inmobiliaria/shared';
+import { Currency, type PropertyDto, type TenantSummary } from '@inmobiliaria/shared';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { buildTenantUrl } from '@/lib/tenant-shared';
 import {
+  budgetFit,
+  budgetFitLabel,
   formatArea,
   formatPrice,
   propertyOperationLabel,
   propertyTypeLabel,
 } from '@/lib/format';
+import { cn } from '@/lib/utils';
 
 interface PropertyCardProps {
   property: PropertyDto & { tenant?: TenantSummary };
   /** Si está presente, los links son cross-tenant (marketplace global). */
   crossTenant?: boolean;
+  /** Si está, agrega badge "Cómodo/Justo" según ajuste del precio. */
+  budget?: { amount: number; currency: Currency } | null;
 }
 
-export function PropertyCard({ property, crossTenant }: PropertyCardProps) {
+export function PropertyCard({ property, crossTenant, budget }: PropertyCardProps) {
   const cover = property.images?.[0];
   const location = [property.zone, property.city].filter(Boolean).join(', ');
   const tenantSlug = property.tenant?.slug;
@@ -67,6 +72,22 @@ export function PropertyCard({ property, crossTenant }: PropertyCardProps) {
               {propertyTypeLabel[property.type]}
             </Badge>
           </div>
+          {/* Badge de fit (sólo cuando hay presupuesto activo y misma moneda). */}
+          {(() => {
+            if (!budget || budget.currency !== property.currency) return null;
+            const fit = budgetFit(property.price, budget.amount);
+            if (fit === 'over') return null;
+            return (
+              <span
+                className={cn(
+                  'absolute right-2 top-2 rounded-full px-2.5 py-1 text-xs font-semibold text-white shadow',
+                  fit === 'comfort' ? 'bg-emerald-500' : 'bg-amber-500',
+                )}
+              >
+                {budgetFitLabel[fit]}
+              </span>
+            );
+          })()}
         </div>
         <CardContent className="space-y-2 p-4">
           <div className="flex items-baseline justify-between gap-2">

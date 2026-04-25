@@ -88,6 +88,7 @@ bash scripts/smoke-test.sh
   - **5.3** Admin: gestión de propiedades + upload imágenes — completado
   - **5.4** Admin: CRM leads + timeline — completado
   - **5.5** Vista pública en mapa + LocationPicker en admin — completado
+  - **5.6** Calculadora de presupuesto + markers coloreados por fit — completado
 - **Fase 6:** CRM de leads (API + captura pública completos; UI en Fase 5.4)
 - **Fase 7:** Deploy productivo
   - **7.0** Dockerfiles + migrations + `docker-compose.prod.yml` (guía Easypanel) — completado
@@ -538,6 +539,45 @@ Vista de mapa interactivo en el listado público y picker visual en el form admi
 - **Coexiste** con los inputs de texto: si pegás coords de Google Maps en los inputs, el mapa se recentra automáticamente. Si arrastrás el pin, los inputs se actualizan.
 - Botón "Cerca de mí" para el caso de carga in-situ desde un dispositivo.
 - Botón "Quitar" para dejar la propiedad sin coordenadas (no aparecerá en mapa público).
+
+## Calculadora de presupuesto (Fase 5.6)
+
+Buscador guiado por presupuesto del cliente.
+
+### `/properties/finder`
+
+Wizard simple (4 pasos en una sola pantalla):
+
+1. **Operación**: pills SALE / RENT / ANTICRETICO.
+2. **Tipo**: pills (incluye "Cualquiera").
+3. **Presupuesto + moneda**: input numérico + toggle BOB/USD.
+4. **Filtros opcionales**: ciudad, dormitorios mínimos.
+
+Submit → redirige a `/properties?view=map&fit=1&budget=X&maxPrice=X&currency=&operation=&...`. El mapa abre directo con los resultados.
+
+### Modo presupuesto en `/properties`
+
+Cuando la URL trae `fit=1&budget=...`, la página activa visualización extra:
+
+- **Banner verde arriba**: "X propiedades dentro de tu presupuesto de USD 150,000" + leyenda + botón "Ajustar búsqueda".
+- **Mapa**: markers custom tipo Idealista (chip con precio + cola triangular). Color según ratio:
+  - 🟢 Verde (`bg-emerald-500`): cómodo, ratio ≤ 70%
+  - 🟡 Amarillo (`bg-amber-500`): justo, 70% < ratio ≤ 100%
+  - Gris si la moneda no coincide con la del presupuesto.
+- **Cards**: badge de fit en la esquina superior derecha de la foto.
+
+### Trade-offs declarados
+
+- **No se hace conversión BOB ↔ USD**. Si tu presupuesto es en USD, sólo ves propiedades publicadas en USD. Aclarado al pie del finder. Esto es intencional: las tasas cambian, y mezclar monedas sin tasa de cambio confiable es engañoso.
+- **`maxPrice` filtra duro** (excluye lo que está sobre presupuesto). El ratio para coloreado se calcula sólo sobre lo que pasó el filtro.
+
+### Helpers reusables
+
+`apps/web/src/lib/format.ts` exporta:
+
+- `formatPriceShort(n)` → `"150k"`, `"3.5M"` (sin símbolo, lo agrega el caller).
+- `budgetFit(price, budget)` → `'comfort' | 'tight' | 'over'`.
+- `budgetFitLabel` → diccionario para UI.
 
 ## CI (Fase 7.2)
 

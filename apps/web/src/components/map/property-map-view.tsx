@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useState, useTransition } from 'react';
 import { LocateFixed, X } from 'lucide-react';
 import { toast } from 'sonner';
-import type { PropertyDto, TenantSummary } from '@inmobiliaria/shared';
+import { Currency, type PropertyDto, type TenantSummary } from '@inmobiliaria/shared';
 import { Button } from '@/components/ui/button';
 
 /**
@@ -27,9 +27,11 @@ const PropertyMapInner = dynamic(
 interface PropertyMapViewProps {
   properties: (PropertyDto & { tenant?: TenantSummary })[];
   crossTenant: boolean;
+  /** Activado por ?fit=1&budget=... en URL — pinta markers según ajuste. */
+  budget?: { amount: number; currency: Currency } | null;
 }
 
-export function PropertyMapView({ properties, crossTenant }: PropertyMapViewProps) {
+export function PropertyMapView({ properties, crossTenant, budget }: PropertyMapViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
@@ -166,6 +168,7 @@ export function PropertyMapView({ properties, crossTenant }: PropertyMapViewProp
           poi={activePoi}
           onPickPoi={(lat, lng) => setPickedPoi({ lat, lng })}
           radiusKm={pendingRadius}
+          budget={budget ?? null}
         />
       </div>
 

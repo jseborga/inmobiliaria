@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { LatLngBounds, LatLng } from 'leaflet';
+import L, { LatLngBounds, LatLng } from 'leaflet';
 import {
   MapContainer,
   Marker,
@@ -11,10 +11,16 @@ import {
   useMapEvents,
   Circle,
 } from 'react-leaflet';
-import type { PropertyDto, TenantSummary } from '@inmobiliaria/shared';
+import { Currency, type PropertyDto, type TenantSummary } from '@inmobiliaria/shared';
 import { applyLeafletIconFix } from './leaflet-icon-fix';
 import { buildTenantUrl } from '@/lib/tenant-shared';
-import { formatPrice, propertyOperationLabel, propertyTypeLabel } from '@/lib/format';
+import {
+  budgetFit,
+  formatPrice,
+  formatPriceShort,
+  propertyOperationLabel,
+  propertyTypeLabel,
+} from '@/lib/format';
 
 applyLeafletIconFix();
 
@@ -33,6 +39,48 @@ export interface PropertyMapInnerProps {
   onPickPoi: (lat: number, lng: number) => void;
   /** Cambio de radio (slider) — opcional. */
   radiusKm: number;
+  /**
+   * Presupuesto activo para visualización. Si está, los markers son chips
+   * con precio + color verde/amarillo según fit. Si no, marker default azul.
+   */
+  budget?: { amount: number; currency: Currency } | null;
+}
+
+/**
+ * Marker custom con label de precio. Estilo "chip" tipo Idealista/Zonaprop.
+ *
+ * Color según ajuste al presupuesto:
+ *   - default azul (sin presupuesto) o gris (precio en otra moneda que el budget)
+ *   - verde (Tailwind emerald-500): cómodo (≤70% del presupuesto)
+ *   - amarillo (Tailwind amber-500): justo (70–100%)
+ */
+function buildPriceMarker(
+  price: string | number,
+  currency: Currency,
+  budget: { amount: number; currency: Currency } | null,
+): L.DivIcon {
+  let bg = 'bg-sky-600';
+  if (budget && budget.currency === currency) {
+    const fit = budgetFit(price, budget.amount);
+    bg = fit === 'comfort' ? 'bg-emerald-500' : 'bg-amber-500';
+  } else if (budget) {
+    bg = 'bg-slate-500';
+  }
+  const label = `${currency === Currency.USD ? '$' : 'Bs'} ${formatPriceShort(price)}`;
+  // Pin con cuerpo + cola triangular tipo Google Maps.
+  const html = `
+    <div class="property-marker">
+      <div class="property-marker-body ${bg}">${label}</div>
+      <div class="property-marker-tail ${bg}"></div>
+    </div>
+  `;
+  return L.divIcon({
+    html,
+    className: '', // no clases de Leaflet por default
+    iconSize: [80, 32],
+    iconAnchor: [40, 36], // ajusta para que la cola apunte al punto
+    popupAnchor: [0, -36],
+  });
 }
 
 export function PropertyMapInner({
@@ -41,6 +89,7 @@ export function PropertyMapInner({
   poi,
   onPickPoi,
   radiusKm,
+  budget,
 }: PropertyMapInnerProps) {
   // Centro/zoom inicial: si hay POI usamos eso; sino bounding box de las props;
   // sino default Bolivia.
@@ -113,8 +162,9 @@ export function PropertyMapInner({
             ? buildTenantUrl(p.tenant.slug, detailPath)
             : `${detailPath}?tenantSlug=${p.tenant?.slug ?? ''}`;
         const cover = p.images?.[0];
+        const icon = buildPriceMarker(p.price, p.currency, budget ?? null);
         return (
-          <Marker key={p.id} position={[lat, lng]}>
+          <Marker key={p.id} position={[lat, lng]} icon={icon}>
             <Popup minWidth={220}>
               <a href={href} className="block space-y-1.5 no-underline">
                 {cover ? (

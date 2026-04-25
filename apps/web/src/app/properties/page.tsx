@@ -1,5 +1,12 @@
 import type { Metadata } from 'next';
-import type { PaginatedResponse, PropertyDto } from '@inmobiliaria/shared';
+import Link from 'next/link';
+import { Sparkles } from 'lucide-react';
+import {
+  Currency,
+  type PaginatedResponse,
+  type PropertyDto,
+} from '@inmobiliaria/shared';
+import { Button } from '@/components/ui/button';
 import { PropertyCard } from '@/components/properties/property-card';
 import {
   PropertyFilters,
@@ -83,6 +90,20 @@ export default async function PropertiesPage({
   const isMarketplace = ctx.context === 'marketplace';
   const view: 'list' | 'map' = searchParams.view === 'map' ? 'map' : 'list';
 
+  // Modo presupuesto: ?fit=1&budget=...&currency=... — activa visualización
+  // (markers coloreados + badges en cards). Los filtros normales (maxPrice,
+  // currency, etc.) ya filtran lo que está fuera del presupuesto.
+  const fitMode = searchParams.fit === '1';
+  const budgetAmount = Number(searchParams.budget);
+  const budgetCurrencyRaw = typeof searchParams.currency === 'string' ? searchParams.currency : '';
+  const budgetCurrency = (Object.values(Currency) as string[]).includes(budgetCurrencyRaw)
+    ? (budgetCurrencyRaw as Currency)
+    : Currency.USD;
+  const budget =
+    fitMode && Number.isFinite(budgetAmount) && budgetAmount > 0
+      ? { amount: budgetAmount, currency: budgetCurrency }
+      : null;
+
   const api = getPublicApi({ tags: ['public-properties'] });
   const filters = pickFilters(searchParams);
   const query = pickQuery(searchParams, view);
@@ -124,11 +145,44 @@ export default async function PropertiesPage({
 
       <PropertyFilters initial={filters} />
 
+      {budget ? (
+        <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="flex items-center gap-1.5">
+              <Sparkles className="h-4 w-4" />
+              <strong>{data.total}</strong> propiedad{data.total === 1 ? '' : 'es'} dentro de tu
+              presupuesto de{' '}
+              <strong>
+                {budget.currency === Currency.USD ? '$us' : 'Bs'}{' '}
+                {budget.amount.toLocaleString('es-BO')}
+              </strong>
+              .
+            </p>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/properties/finder">Ajustar búsqueda</Link>
+            </Button>
+          </div>
+          <p className="mt-1 text-xs text-emerald-800/80">
+            Verde = cómodo (≤ 70% del presupuesto). Amarillo = justo (70–100%).
+          </p>
+        </div>
+      ) : null}
+
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           {data.total} resultado{data.total === 1 ? '' : 's'}
         </p>
-        <ViewToggle current={view} />
+        <div className="flex items-center gap-3">
+          {!budget ? (
+            <Button asChild size="sm" variant="ghost">
+              <Link href="/properties/finder">
+                <Sparkles className="mr-1 h-4 w-4" />
+                Buscar por presupuesto
+              </Link>
+            </Button>
+          ) : null}
+          <ViewToggle current={view} />
+        </div>
       </div>
 
       {data.items.length === 0 ? (
@@ -136,11 +190,20 @@ export default async function PropertiesPage({
           No encontramos propiedades con esos filtros.
         </div>
       ) : view === 'map' ? (
-        <PropertyMapView properties={data.items} crossTenant={isMarketplace} />
+        <PropertyMapView
+          properties={data.items}
+          crossTenant={isMarketplace}
+          budget={budget}
+        />
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {data.items.map((p) => (
-            <PropertyCard key={p.id} property={p} crossTenant={isMarketplace} />
+            <PropertyCard
+              key={p.id}
+              property={p}
+              crossTenant={isMarketplace}
+              budget={budget}
+            />
           ))}
         </div>
       )}
