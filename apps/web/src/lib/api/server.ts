@@ -3,6 +3,11 @@ import 'server-only';
 import { cookies, headers } from 'next/headers';
 import { createApiClient, type ApiClient } from './client';
 import { env } from '../env';
+import {
+  ADMIN_REFRESH_COOKIE,
+  PLATFORM_REFRESH_COOKIE,
+  SESSION_COOKIE,
+} from '../auth/cookies';
 import { getRequestContext } from '../tenant';
 
 /**
@@ -12,9 +17,7 @@ import { getRequestContext } from '../tenant';
  * - Toma tenantSlug del contexto resuelto por middleware.
  */
 
-export const SESSION_COOKIE = 'web_session';
-export const ADMIN_REFRESH_COOKIE = 'refresh_token';
-export const PLATFORM_REFRESH_COOKIE = 'platform_refresh_token';
+export { SESSION_COOKIE, ADMIN_REFRESH_COOKIE, PLATFORM_REFRESH_COOKIE };
 
 export interface ServerApiOptions {
   /** Forzar tenant slug (ej: para llamadas públicas con tenant explícito). */

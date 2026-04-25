@@ -84,7 +84,7 @@ bash scripts/smoke-test.sh
 - **Fase 5:** Portal público + búsqueda
   - **5.0** Fundaciones del web (shadcn, cliente API, middleware multi-tenant) — completado
   - **5.1** Marketplace público + captura de leads — completado
-  - **5.2** Admin: autenticación — pendiente
+  - **5.2** Admin: autenticación — completado
   - **5.3** Admin: gestión de propiedades + upload imágenes — pendiente
   - **5.4** Admin: CRM leads + timeline — pendiente
 - **Fase 6:** CRM de leads (API + captura pública completos; UI en Fase 5.4)
@@ -305,6 +305,28 @@ Implementación:
 - En el marketplace global (`lvh.me`), las cards linkean al sitio del tenant (`acme.lvh.me/properties/[slug]`) usando `buildTenantUrl()`.
 - El form de leads (`apps/web/src/components/leads/lead-form.tsx`) usa `react-hook-form` + Zod (`publicLeadSchema` de `@inmobiliaria/shared`) y postea a `/api/leads`, un route handler que proxea a `POST /api/public/leads` en el backend, forwardeando `User-Agent` y `Referer` para auditoría.
 - Filtros sincronizan con la URL — Server Component re-renderiza al cambiar `searchParams`.
+
+## Admin (Fase 5.2)
+
+Panel de gestión protegido detrás de auth de tenant.
+
+| Ruta | Tipo | Descripción |
+|---|---|---|
+| `/login` | público | Form RHF + Zod (`tenantLoginSchema`). Si entrás desde un subdominio (`acme.lvh.me`) el slug viene precargado y oculto |
+| `/admin` | protegida | Dashboard con stats (propiedades totales/publicadas, leads totales/nuevos) + accesos directos |
+| `POST /api/auth/login` | route handler | Proxy a `POST /api/auth/login` del API. Captura el `Set-Cookie: refresh_token` y lo re-emite en el dominio del web; setea `web_session` (httpOnly) con el access token |
+| `POST /api/auth/refresh` | route handler | Rota tokens; si falla, limpia cookies (cliente debe redirigir a `/login`) |
+| `POST /api/auth/logout` | route handler | Revoca el refresh en el API y borra cookies del web |
+
+### Cookies
+
+- `web_session` (`httpOnly`, `path=/`, `sameSite=lax`): contiene el access token JWT. Server Components y route handlers lo leen para inyectar `Authorization: Bearer` cuando llaman al API.
+- `refresh_token` (`httpOnly`, `path=/api/auth`, `sameSite=strict`): re-emitido por el web tras login (no se comparte cross-domain con el API). Solo se envía a `/api/auth/*` del web.
+
+### Server-side guards
+
+- `getCurrentUser()` (`apps/web/src/lib/auth/session.ts`): devuelve el `MeResponse` o `null`. Llama a `GET /auth/me`, trata 401/403 como "no logueado".
+- `requireUser(nextPath)`: redirige a `/login?next=...` si no hay sesión. El layout `app/admin/layout.tsx` lo invoca.
 
 ### Tests
 
