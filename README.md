@@ -81,8 +81,13 @@ bash scripts/smoke-test.sh
 - **Fase 2:** Setup monorepo e infra base (completado)
 - **Fase 3:** Auth + multi-tenancy core (completado)
 - **Fase 4:** Gestión de propiedades + upload de imágenes (completado)
-- **Fase 5:** Portal público + búsqueda (API completa; UI pendiente)
-- **Fase 6:** CRM de leads (API + captura pública completos)
+- **Fase 5:** Portal público + búsqueda
+  - **5.0** Fundaciones del web (shadcn, cliente API, middleware multi-tenant) — completado
+  - **5.1** Marketplace público + captura de leads — pendiente
+  - **5.2** Admin: autenticación — pendiente
+  - **5.3** Admin: gestión de propiedades + upload imágenes — pendiente
+  - **5.4** Admin: CRM leads + timeline — pendiente
+- **Fase 6:** CRM de leads (API + captura pública completos; UI en Fase 5.4)
 - **Fase 7:** Observabilidad + deploy producción
 
 ## Convenciones
@@ -252,3 +257,46 @@ Eventos automáticos emitidos por el service:
 - Actividades de contacto real (`CALL`/`EMAIL`/`WHATSAPP`/`MEETING`) actualizan `lead.lastContactedAt`.
 
 Los kinds `CREATED`, `STATUS_CHANGE` y `ASSIGNMENT` están reservados al sistema: intentar emitirlos manualmente por `/activities` devuelve `403`.
+
+## Frontend (Fase 5.0)
+
+### Multi-tenancy por subdominio
+
+El web resuelve el contexto a partir del host (`apps/web/src/middleware.ts`):
+
+| Host | Contexto | Tenant resuelto |
+|---|---|---|
+| `lvh.me:3000` | `marketplace` | ninguno (catálogo global) |
+| `acme.lvh.me:3000` | `tenant` | `acme` (sitio de la inmobiliaria) |
+| `admin.lvh.me:3000` | `admin` | derivado del usuario logueado |
+
+En dev usamos `lvh.me` que resuelve a `127.0.0.1` sin tocar `/etc/hosts`. Configurable vía `NEXT_PUBLIC_ROOT_DOMAIN` en `apps/web/.env.local`.
+
+El middleware inyecta los headers `x-app-context` y `x-tenant-slug` para que los Server Components y route handlers no parseen el host.
+
+### Stack UI
+
+- **shadcn/ui** (componentes accesibles copiados localmente en `src/components/ui/`)
+- **react-hook-form + Zod** para formularios; los schemas viven en `@inmobiliaria/shared/dto/*` y se reutilizan entre frontend y backend.
+- **sonner** para toasts (`Toaster` en el root layout).
+- **lucide-react** para iconos.
+
+### Cliente API
+
+`apps/web/src/lib/api/` expone:
+
+- `createApiClient({ baseUrl, accessToken, tenantSlug, cookieHeader })` — wrapper sobre `fetch` con manejo automático de `Authorization`, `X-Tenant-Slug`, JSON, `cache` y `tags` de Next.
+- `getServerApi()` — builder para Server Components y route handlers que toma access token de la cookie httpOnly `web_session` y forwardea las cookies de refresh al backend.
+- `ApiError` — error tipado con `status`, `body` y `displayMessage` para presentar al usuario.
+
+### Tests
+
+Playwright vive en `apps/web/tests/e2e/`. Levanta el dev server automáticamente:
+
+```bash
+pnpm --filter @inmobiliaria/web test:e2e
+# o con UI interactiva:
+pnpm --filter @inmobiliaria/web test:e2e:ui
+```
+
+La API debe estar corriendo aparte (`pnpm --filter @inmobiliaria/api dev`). El smoke-test de la API (`scripts/smoke-test.sh`) sigue siendo la suite e2e de referencia para el backend.

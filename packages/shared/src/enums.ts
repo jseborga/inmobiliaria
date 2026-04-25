@@ -13,12 +13,12 @@ export const PropertyType = {
 } as const;
 export type PropertyType = (typeof PropertyType)[keyof typeof PropertyType];
 
-export const OperationType = {
+export const PropertyOperation = {
   SALE: 'SALE',
   RENT: 'RENT',
   ANTICRETICO: 'ANTICRETICO',
 } as const;
-export type OperationType = (typeof OperationType)[keyof typeof OperationType];
+export type PropertyOperation = (typeof PropertyOperation)[keyof typeof PropertyOperation];
 
 export const Currency = {
   BOB: 'BOB',
