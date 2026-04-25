@@ -85,7 +85,7 @@ bash scripts/smoke-test.sh
   - **5.0** Fundaciones del web (shadcn, cliente API, middleware multi-tenant) — completado
   - **5.1** Marketplace público + captura de leads — completado
   - **5.2** Admin: autenticación — completado
-  - **5.3** Admin: gestión de propiedades + upload imágenes — pendiente
+  - **5.3** Admin: gestión de propiedades + upload imágenes — completado
   - **5.4** Admin: CRM leads + timeline — pendiente
 - **Fase 6:** CRM de leads (API + captura pública completos; UI en Fase 5.4)
 - **Fase 7:** Observabilidad + deploy producción
@@ -329,6 +329,45 @@ Panel de gestión protegido detrás de auth de tenant.
 
 - `getCurrentUser()` (`apps/web/src/lib/auth/session.ts`): devuelve el `MeResponse` o `null`. Llama a `GET /auth/me`, trata 401/403 como "no logueado".
 - `requireUser(nextPath)`: redirige a `/login?next=...` si no hay sesión. El layout `app/admin/layout.tsx` lo invoca.
+
+## Admin: propiedades + imágenes (Fase 5.3)
+
+CRUD de propiedades con upload de imágenes vía presigned PUT.
+
+| Ruta | Tipo | Descripción |
+|---|---|---|
+| `/admin/properties` | protegida | Tabla con filtros (q, status, operación, tipo) + paginación |
+| `/admin/properties/new` | protegida | Form de creación. Status default `DRAFT` |
+| `/admin/properties/[id]/edit` | protegida | Form de edición + galería de imágenes + acciones de status (Publicar/Despublicar/Archivar/Eliminar) |
+
+### Server actions
+
+Todas las mutaciones usan **server actions** en `apps/web/src/lib/actions/`:
+
+- `createProperty(input)`, `updateProperty(id, input)`: validan con `propertyCreateSchema`/`propertyUpdateSchema` de `@inmobiliaria/shared`. Devuelven `ActionResult<T>` con `fieldErrors` mapeados desde Zod issues.
+- `setPropertyStatus(id, status)`: transiciona DRAFT/PUBLISHED/ARCHIVED. La API setea automáticamente `publishedAt`/`archivedAt`.
+- `deleteProperty(id)` y `deletePropertyAndRedirect(id)`.
+- `presignPropertyImage(propertyId, contentType, size)`, `confirmPropertyImage(propertyId, payload)`, `deletePropertyImage(propertyId, imageId)`.
+
+Cada mutación llama `revalidatePath('/admin/properties')`, `revalidatePath('/admin')` y `revalidateTag('public-properties')` para refrescar tanto la UI admin como el marketplace público.
+
+### Upload de imágenes (3 pasos)
+
+```
+1. Cliente: presignPropertyImage(propertyId, file.type, file.size)
+   → server action llama POST /api/properties/:id/images/presign
+   ← { uploadUrl, headers, r2Key, publicUrl, expiresIn }
+
+2. Cliente: fetch(uploadUrl, { method:'PUT', headers, body: file })
+   → va directo al storage (R2 o mock); el access token NO viaja al storage,
+     la firma presigned ya autoriza la subida (TTL 5 min)
+
+3. Cliente: confirmPropertyImage(propertyId, { r2Key, publicUrl, width, height })
+   → server action llama POST /api/properties/:id/images
+   ← persistido en DB, revalidatePath del edit
+```
+
+Tipos aceptados: `image/jpeg`, `image/png`, `image/webp`, `image/avif`. Tamaño máximo 10 MB por imagen.
 
 ### Tests
 
