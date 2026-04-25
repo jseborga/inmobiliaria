@@ -86,7 +86,7 @@ bash scripts/smoke-test.sh
   - **5.1** Marketplace público + captura de leads — completado
   - **5.2** Admin: autenticación — completado
   - **5.3** Admin: gestión de propiedades + upload imágenes — completado
-  - **5.4** Admin: CRM leads + timeline — pendiente
+  - **5.4** Admin: CRM leads + timeline — completado
 - **Fase 6:** CRM de leads (API + captura pública completos; UI en Fase 5.4)
 - **Fase 7:** Observabilidad + deploy producción
 
@@ -142,6 +142,7 @@ Hay **dos tipos de sujetos autenticados**, distinguidos por el claim `kind` en e
 | POST | `/api/platform-admin/tenants` | PLATFORM | Crea Tenant + OWNER |
 | GET  | `/api/platform-admin/tenants` | PLATFORM | Lista tenants (paginado) |
 | GET  | `/api/tenants/current` | TENANT | Tenant del usuario actual |
+| GET  | `/api/tenants/users` | TENANT | Lista usuarios ACTIVE del tenant (selector de asignación) |
 
 ### Tokens
 
@@ -368,6 +369,38 @@ Cada mutación llama `revalidatePath('/admin/properties')`, `revalidatePath('/ad
 ```
 
 Tipos aceptados: `image/jpeg`, `image/png`, `image/webp`, `image/avif`. Tamaño máximo 10 MB por imagen.
+
+## Admin: CRM leads (Fase 5.4)
+
+Gestión completa de leads del marketplace + entrada manual del equipo.
+
+| Ruta | Tipo | Descripción |
+|---|---|---|
+| `/admin/leads` | protegida | Tabla con filtros (q, status, source, mine=1) + paginación |
+| `/admin/leads/new` | protegida | Form de alta manual (llamada, walk-in, referido) |
+| `/admin/leads/[id]` | protegida | Detalle con timeline, status/asignación inline, form de nueva actividad, eliminar |
+
+### Server actions
+
+`apps/web/src/lib/actions/leads.ts`:
+
+- `createLead(input)`: alta manual; valida con `adminLeadCreateSchema`.
+- `updateLead(id, patch)`: cambio de status, asignación, contacto. La API emite automáticamente actividades `STATUS_CHANGE` y `ASSIGNMENT` cuando aplica.
+- `addLeadActivity(leadId, { kind, body })`: solo kinds manuales (NOTE/CALL/EMAIL/WHATSAPP/MEETING). El API rechaza con 403 los kinds reservados (CREATED/STATUS_CHANGE/ASSIGNMENT).
+- `deleteLead(id)` / `deleteLeadAndRedirect(id)`: cascada a actividades.
+
+Cada mutación revalida `/admin/leads` y `/admin/leads/[id]` para que la UI quede consistente sin reload del browser.
+
+### Timeline
+
+Ordenado descendente (más reciente arriba). Distingue visualmente:
+
+- **Manuales** (NOTE/CALL/EMAIL/WHATSAPP/MEETING): icono coloreado, body con whitespace preservado, autor visible.
+- **Automáticas** (CREATED/STATUS_CHANGE/ASSIGNMENT): borde punteado, fondo sobrio, metadata estructurada (`from → to` para status, `from/to` para asignación).
+
+### Filtro `mine=1`
+
+El UI checkbox "Solo míos" se traduce a `?assignedUserId=me` en la API, que resuelve `me` al usuario autenticado en el controller.
 
 ### Tests
 

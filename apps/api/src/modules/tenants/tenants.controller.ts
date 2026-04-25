@@ -29,4 +29,24 @@ export class TenantsController {
       },
     });
   }
+
+  /**
+   * Lista los usuarios ACTIVE del tenant. Pensado para selectores de
+   * asignación (ej. asignar lead a un agente). Devuelve solo lo necesario
+   * para mostrar y elegir; no expone passwordHash, lastLoginAt, etc.
+   */
+  @Get('users')
+  async listUsers(@CurrentUser() user: AuthenticatedTenantUser) {
+    return this.prisma.raw.user.findMany({
+      where: { tenantId: user.tenantId, status: 'ACTIVE' },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }, { email: 'asc' }],
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        role: true,
+      },
+    });
+  }
 }
