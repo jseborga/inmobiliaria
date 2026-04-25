@@ -24,7 +24,20 @@ export const PLATFORM_REFRESH_COOKIE = 'platform_refresh_token';
 /** Path con el que el API setea el refresh token (debe matchear acá). */
 export const REFRESH_COOKIE_PATH = '/api/auth';
 
+/**
+ * `Secure` solo cuando estamos en prod Y no se pidió override explícito.
+ *
+ * `COOKIE_INSECURE=1` es un escape hatch para casos atípicos donde el web
+ * corre en producción detrás de un proxy que NO termina TLS (ej: Easypanel
+ * sin Caddy delante, IP+puerto pelado para una demo). En esos casos las
+ * cookies con `Secure` se descartan en HTTP y el login se rompe.
+ *
+ * Bajar NODE_ENV a 'development' tendría el mismo efecto pero deshabilitaría
+ * optimizaciones de Next y otros side-effects.
+ */
 const isProd = process.env.NODE_ENV === 'production';
+const cookieInsecure = process.env.COOKIE_INSECURE === '1';
+const useSecureCookies = isProd && !cookieInsecure;
 
 export interface CookieAttrs {
   httpOnly: boolean;
@@ -39,7 +52,7 @@ export interface CookieAttrs {
 export function sessionCookieOptions(maxAgeSeconds?: number): CookieAttrs {
   return {
     httpOnly: true,
-    secure: isProd,
+    secure: useSecureCookies,
     sameSite: 'lax',
     path: '/',
     ...(maxAgeSeconds ? { maxAge: maxAgeSeconds } : {}),
@@ -50,7 +63,7 @@ export function sessionCookieOptions(maxAgeSeconds?: number): CookieAttrs {
 export function refreshCookieOptions(maxAgeSeconds?: number): CookieAttrs {
   return {
     httpOnly: true,
-    secure: isProd,
+    secure: useSecureCookies,
     sameSite: 'strict',
     path: REFRESH_COOKIE_PATH,
     ...(maxAgeSeconds ? { maxAge: maxAgeSeconds } : {}),

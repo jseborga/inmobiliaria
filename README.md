@@ -449,6 +449,7 @@ API queda en `:3001/api/health`, web en `:3000/`.
 - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `WEB_SESSION_SECRET`: generar con `openssl rand -base64 48`. **Nunca reusar entre envs**.
 - `CORS_ORIGINS`: lista coma-separada (incluí HTTPS y todos los subdominios desde donde el web haga fetch).
 - `R2_*`: si están las 5, el storage usa Cloudflare R2; si alguna falta, cae al mock en disco.
+- `COOKIE_INSECURE=1` (escape hatch): desactiva `Secure` en las cookies cuando deployás sin TLS (HTTP plano). **No usar con dominios públicos** — las cookies viajarían por un canal sin cifrar. En Easypanel con Caddy delante (default) no hace falta.
 
 ### Migraciones
 

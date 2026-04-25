@@ -81,10 +81,15 @@ export class AuthController {
   }
 
   private cookieOptions() {
+    // `Secure` solo si estamos en prod Y no se pidió override.
+    // `COOKIE_INSECURE=1` desactiva Secure para deploys atípicos sin TLS
+    // (ver README, Fase 7.0). Bajar NODE_ENV a 'development' tendría
+    // efectos colaterales no deseados.
     const isProd = this.config.get<string>('NODE_ENV') === 'production';
+    const cookieInsecure = this.config.get<string>('COOKIE_INSECURE') === '1';
     return {
       httpOnly: true,
-      secure: isProd,
+      secure: isProd && !cookieInsecure,
       sameSite: 'strict' as const,
       path: '/api/auth',
     };

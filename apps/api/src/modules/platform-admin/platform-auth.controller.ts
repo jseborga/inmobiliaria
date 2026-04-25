@@ -83,10 +83,12 @@ export class PlatformAuthController {
   }
 
   private cookieOptions() {
+    // Ver auth.controller.ts: `COOKIE_INSECURE=1` permite deploy sin TLS.
     const isProd = this.config.get<string>('NODE_ENV') === 'production';
+    const cookieInsecure = this.config.get<string>('COOKIE_INSECURE') === '1';
     return {
       httpOnly: true,
-      secure: isProd,
+      secure: isProd && !cookieInsecure,
       sameSite: 'strict' as const,
       path: '/api/platform-admin/auth',
     };
