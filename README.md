@@ -87,6 +87,7 @@ bash scripts/smoke-test.sh
   - **5.2** Admin: autenticación — completado
   - **5.3** Admin: gestión de propiedades + upload imágenes — completado
   - **5.4** Admin: CRM leads + timeline — completado
+  - **5.5** Vista pública en mapa + LocationPicker en admin — completado
 - **Fase 6:** CRM de leads (API + captura pública completos; UI en Fase 5.4)
 - **Fase 7:** Deploy productivo
   - **7.0** Dockerfiles + migrations + `docker-compose.prod.yml` (guía Easypanel) — completado
@@ -508,6 +509,35 @@ Decisiones:
 
 - **HTTP 200 si OK, 503 si degraded** — orquestadores (Easypanel/Caddy/Docker) lo usan para reciclar el contenedor o sacarlo del pool.
 - `release` sale de `GIT_SHA` cuando está; útil para confirmar qué versión está corriendo.
+
+## Mapa público + LocationPicker (Fase 5.5)
+
+Vista de mapa interactivo en el listado público y picker visual en el form admin.
+
+### Stack
+
+- `react-leaflet@4` + `leaflet` (compat React 18). OpenStreetMap como tile layer — **sin API key, sin cuota, gratis**.
+- Componentes leaflet cargados via `dynamic(import, { ssr: false })` porque tocan `window` en el import. Mientras hidratan, render de placeholder.
+- Helpers de tenant separados en `lib/tenant-shared.ts` (sin `next/headers`) para que client components puedan usarlos sin romper el bundle.
+
+### Vista pública (`/properties`)
+
+- Toggle **Lista | Mapa** en el header. Conserva los filtros existentes (operación, tipo, precio, etc.) entre vistas. Estado en URL (`?view=map`).
+- En modo mapa:
+  - Marker por cada propiedad con `lat`/`lng`. Las que no tienen coords se cuentan en un aviso ("X propiedades sin coordenadas no aparecen en el mapa").
+  - Popup al click: foto, título, precio, link al detalle.
+  - Botón **"Cerca de mí"**: pide geolocation del browser → setea `?nearLat&nearLng&radiusKm`.
+  - **Click en cualquier punto del mapa** → marker de POI + botón "Buscar en esta área (X km)" → reconsulta API.
+  - Slider de radio (1–50 km).
+  - Cuando hay POI activo, dibuja un círculo translúcido y muestra botón "Quitar área de búsqueda".
+- API: usa `nearLat/nearLng/radiusKm` de `GET /api/public/properties` (PostGIS `ST_DWithin` + `ST_Distance`).
+
+### Picker en form admin (`/admin/properties/new` y `/edit`)
+
+- Mapa clickeable + marker draggable que actualiza los campos `latitude`/`longitude` del form (RHF `setValue`).
+- **Coexiste** con los inputs de texto: si pegás coords de Google Maps en los inputs, el mapa se recentra automáticamente. Si arrastrás el pin, los inputs se actualizan.
+- Botón "Cerca de mí" para el caso de carga in-situ desde un dispositivo.
+- Botón "Quitar" para dejar la propiedad sin coordenadas (no aparecerá en mapa público).
 
 ## CI (Fase 7.2)
 

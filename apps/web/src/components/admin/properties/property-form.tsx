@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { LocationPicker } from '@/components/map/location-picker';
 import {
   createProperty,
   updateProperty,
@@ -49,6 +50,8 @@ export function PropertyForm({ property }: PropertyFormProps) {
     handleSubmit,
     formState: { errors, isSubmitting },
     setError,
+    watch,
+    setValue,
   } = useForm<PropertyCreateInput>({
     resolver: zodResolver(propertyCreateSchema),
     defaultValues: property
@@ -76,6 +79,11 @@ export function PropertyForm({ property }: PropertyFormProps) {
           currency: Currency.BOB,
         },
   });
+
+  // Subscribimos lat/lng para que el LocationPicker se mantenga en sync con
+  // ediciones manuales en los inputs de texto, y viceversa (set vía setValue).
+  const watchedLat = watch('latitude');
+  const watchedLng = watch('longitude');
 
   async function onSubmit(values: PropertyCreateInput) {
     setServerError(null);
@@ -216,6 +224,32 @@ export function PropertyForm({ property }: PropertyFormProps) {
           <Field label="Zona" name="zone" register={register} error={errors.zone?.message} />
         </div>
         <Field label="Dirección" name="address" register={register} error={errors.address?.message} />
+
+        <div className="space-y-2">
+          <Label>Ubicación en el mapa</Label>
+          <LocationPicker
+            value={{
+              lat: typeof watchedLat === 'number' && Number.isFinite(watchedLat) ? watchedLat : null,
+              lng: typeof watchedLng === 'number' && Number.isFinite(watchedLng) ? watchedLng : null,
+            }}
+            onChange={(lat, lng) => {
+              // setValue con shouldDirty para que RHF marque el form como modificado.
+              // valueAsNumber:true ya lo manejan los inputs; acá pasamos el valor directo.
+              setValue('latitude', lat ?? undefined, {
+                shouldDirty: true,
+                shouldValidate: true,
+              });
+              setValue('longitude', lng ?? undefined, {
+                shouldDirty: true,
+                shouldValidate: true,
+              });
+            }}
+          />
+          <p className="text-xs text-muted-foreground">
+            También podés pegar las coordenadas directamente abajo (formato decimal, ej. de Google Maps).
+          </p>
+        </div>
+
         <div className="grid gap-4 md:grid-cols-2">
           <Field
             label="Latitud"

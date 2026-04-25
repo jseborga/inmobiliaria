@@ -6,6 +6,8 @@ import {
   type PropertyFiltersValues,
 } from '@/components/properties/property-filters';
 import { Pagination } from '@/components/properties/pagination';
+import { ViewToggle } from '@/components/properties/view-toggle';
+import { PropertyMapView } from '@/components/map/property-map-view';
 import { ApiError } from '@/lib/api';
 import { getPublicApi } from '@/lib/api/public';
 import { getRequestContext } from '@/lib/tenant';
@@ -40,16 +42,34 @@ function pickFilters(searchParams: SearchParams): PropertyFiltersValues {
   return out;
 }
 
-function pickQuery(searchParams: SearchParams) {
+/**
+ * En modo mapa subimos `take` para que la vista no quede partida en páginas
+ * de 12 markers (que sería raro de UX). Igual está acotado a 100 por la API.
+ */
+const MAP_TAKE = 80;
+
+function pickQuery(searchParams: SearchParams, view: 'list' | 'map') {
   const q: Record<string, string | number> = {};
   for (const k of FILTER_KEYS) {
     const v = searchParams[k];
     if (typeof v === 'string' && v.length > 0) q[k] = v;
   }
+
+  // Geo filters (sólo aplica modo mapa, vienen de POI/cerca de mí).
+  for (const k of ['nearLat', 'nearLng', 'radiusKm'] as const) {
+    const v = searchParams[k];
+    if (typeof v === 'string' && v.length > 0) q[k] = v;
+  }
+
   const skip = Number(searchParams.skip ?? 0);
-  const take = Number(searchParams.take ?? TAKE_DEFAULT);
+  const requestedTake = Number(searchParams.take ?? (view === 'map' ? MAP_TAKE : TAKE_DEFAULT));
   q.skip = Number.isFinite(skip) && skip >= 0 ? skip : 0;
-  q.take = Number.isFinite(take) && take > 0 && take <= 100 ? take : TAKE_DEFAULT;
+  q.take =
+    Number.isFinite(requestedTake) && requestedTake > 0 && requestedTake <= 100
+      ? requestedTake
+      : view === 'map'
+        ? MAP_TAKE
+        : TAKE_DEFAULT;
   return q;
 }
 
@@ -61,10 +81,11 @@ export default async function PropertiesPage({
   const ctx = getRequestContext();
   const tenantSlug = ctx.tenantSlug;
   const isMarketplace = ctx.context === 'marketplace';
+  const view: 'list' | 'map' = searchParams.view === 'map' ? 'map' : 'list';
 
   const api = getPublicApi({ tags: ['public-properties'] });
   const filters = pickFilters(searchParams);
-  const query = pickQuery(searchParams);
+  const query = pickQuery(searchParams, view);
 
   let data: PaginatedResponse<PropertyDto>;
   try {
@@ -103,10 +124,19 @@ export default async function PropertiesPage({
 
       <PropertyFilters initial={filters} />
 
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {data.total} resultado{data.total === 1 ? '' : 's'}
+        </p>
+        <ViewToggle current={view} />
+      </div>
+
       {data.items.length === 0 ? (
         <div className="rounded-lg border border-dashed p-10 text-center text-muted-foreground">
           No encontramos propiedades con esos filtros.
         </div>
+      ) : view === 'map' ? (
+        <PropertyMapView properties={data.items} crossTenant={isMarketplace} />
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {data.items.map((p) => (
@@ -115,12 +145,14 @@ export default async function PropertiesPage({
         </div>
       )}
 
-      <Pagination
-        total={data.total}
-        take={take}
-        skip={skip}
-        searchParams={searchParams}
-      />
+      {view === 'list' ? (
+        <Pagination
+          total={data.total}
+          take={take}
+          skip={skip}
+          searchParams={searchParams}
+        />
+      ) : null}
     </main>
   );
 }

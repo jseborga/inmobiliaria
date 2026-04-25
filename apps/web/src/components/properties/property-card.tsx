@@ -3,7 +3,7 @@ import { MapPin, BedDouble, Bath, Ruler } from 'lucide-react';
 import type { PropertyDto, TenantSummary } from '@inmobiliaria/shared';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { buildTenantUrl } from '@/lib/tenant';
+import { buildTenantUrl } from '@/lib/tenant-shared';
 import {
   formatArea,
   formatPrice,
