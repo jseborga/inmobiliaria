@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsString, MaxLength, Min, Max } from 'class-validator';
+import { IsInt, IsOptional, IsString, MaxLength, Min, Max } from 'class-validator';
 
 export class PresignImageDto {
   @IsString()
@@ -22,18 +22,21 @@ export class ConfirmImageDto {
   @MaxLength(500)
   publicUrl!: string;
 
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
   @Max(100)
   order?: number;
 
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(20000)
   width?: number;
 
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
