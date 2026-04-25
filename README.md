@@ -323,6 +323,8 @@ Panel de gestión protegido detrás de auth de tenant.
 - `web_session` (`httpOnly`, `path=/`, `sameSite=lax`): contiene el access token JWT. Server Components y route handlers lo leen para inyectar `Authorization: Bearer` cuando llaman al API.
 - `refresh_token` (`httpOnly`, `path=/api/auth`, `sameSite=strict`): re-emitido por el web tras login (no se comparte cross-domain con el API). Solo se envía a `/api/auth/*` del web.
 
+> En `NODE_ENV=production` ambas cookies se emiten con `Secure`, por lo que **requieren HTTPS**. Para probar la build de producción localmente sobre HTTP, usá `next dev` (o un reverse proxy con TLS).
+
 ### Server-side guards
 
 - `getCurrentUser()` (`apps/web/src/lib/auth/session.ts`): devuelve el `MeResponse` o `null`. Llama a `GET /auth/me`, trata 401/403 como "no logueado".
