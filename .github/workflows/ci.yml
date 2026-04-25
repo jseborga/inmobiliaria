@@ -6,8 +6,18 @@ on:
   pull_request:
     branches: [main]
 
+# Cancelamos runs viejos del mismo PR cuando llega un push nuevo —
+# ahorra minutos de runner sin perder el feedback del último commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '10.33.2'
+
 jobs:
-  check:
+  quality:
     name: Lint + Typecheck + Build
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -16,17 +26,18 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: pnpm
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Generate Prisma client
+        # tipos de @prisma/client se necesitan para el typecheck del API.
         run: pnpm --filter @inmobiliaria/api prisma:generate
 
       - name: Typecheck
@@ -36,4 +47,129 @@ jobs:
         run: pnpm lint
 
       - name: Build
+        # NEXT_PUBLIC_* se inlinean en build; en CI usamos placeholders.
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3001/api
+          NEXT_PUBLIC_ROOT_DOMAIN: localhost:3000
         run: pnpm build
+
+  e2e:
+    name: API E2E Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4-alpine
+        env:
+          POSTGRES_USER: inmobiliaria
+          POSTGRES_PASSWORD: inmobiliaria_ci
+          POSTGRES_DB: inmobiliaria
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U inmobiliaria -d inmobiliaria"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      # Conexión a los servicios de arriba.
+      DATABASE_URL: postgresql://inmobiliaria:inmobiliaria_ci@localhost:5432/inmobiliaria?schema=public
+      REDIS_URL: redis://localhost:6379
+
+      # API runtime.
+      NODE_ENV: production
+      PORT: '3001'
+      API_PREFIX: api
+      CORS_ORIGINS: http://localhost:3000
+      ROOT_DOMAIN: localhost:3000
+
+      # JWT secrets de CI — no usar en prod.
+      JWT_ACCESS_SECRET: ci-access-secret-not-for-prod
+      JWT_REFRESH_SECRET: ci-refresh-secret-not-for-prod
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 7d
+
+      # Super-admin que crea el seed y consume el smoke test.
+      SUPER_ADMIN_EMAIL: admin@miapp.test
+      SUPER_ADMIN_PASSWORD: 'SuperAdmin12345!'
+      SUPER_ADMIN_FIRST_NAME: Platform
+      SUPER_ADMIN_LAST_NAME: Admin
+
+      # Cookies sin Secure: el smoke usa curl HTTP plano contra localhost.
+      COOKIE_INSECURE: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install jq (smoke test lo usa)
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @inmobiliaria/api prisma:generate
+
+      - name: Apply migrations
+        run: pnpm --filter @inmobiliaria/api exec prisma migrate deploy
+
+      - name: Seed super-admin
+        run: pnpm --filter @inmobiliaria/api prisma:seed
+
+      - name: Build API
+        run: pnpm --filter @inmobiliaria/api build
+
+      - name: Start API
+        working-directory: apps/api
+        run: |
+          node dist/main.js > /tmp/api.log 2>&1 &
+          echo $! > /tmp/api.pid
+          for i in {1..30}; do
+            if curl -sf http://localhost:3001/api/health >/dev/null; then
+              echo "API ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "API never started — last 50 lines of log:"
+          tail -n 50 /tmp/api.log || true
+          exit 1
+
+      - name: Run smoke test
+        env:
+          API_URL: http://localhost:3001/api
+        run: bash scripts/smoke-test.sh
+
+      - name: Show API logs on failure
+        if: failure()
+        run: |
+          echo "=== /tmp/api.log ==="
+          cat /tmp/api.log || true
+
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f /tmp/api.pid ]; then
+            kill "$(cat /tmp/api.pid)" 2>/dev/null || true
+          fi

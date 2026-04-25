@@ -91,7 +91,7 @@ bash scripts/smoke-test.sh
 - **Fase 7:** Deploy productivo
   - **7.0** Dockerfiles + migrations + `docker-compose.prod.yml` (guía Easypanel) — completado
   - **7.1** Observabilidad (Pino logs + Sentry + health enriquecido) — completado
-  - **7.2** CI (typecheck/lint/build en PR) — pendiente
+  - **7.2** CI (GitHub Actions: lint/typecheck/build + smoke E2E) — completado
 
 ## Convenciones
 
@@ -508,6 +508,31 @@ Decisiones:
 
 - **HTTP 200 si OK, 503 si degraded** — orquestadores (Easypanel/Caddy/Docker) lo usan para reciclar el contenedor o sacarlo del pool.
 - `release` sale de `GIT_SHA` cuando está; útil para confirmar qué versión está corriendo.
+
+## CI (Fase 7.2)
+
+`.github/workflows/ci.yml` corre en cada push a `main` y en cada PR:
+
+### Job `quality`
+- pnpm install (con cache)
+- prisma generate (necesario para typecheck del API)
+- typecheck (turbo, monorepo)
+- lint (ESLint en API y web)
+- build (API con tsc, web con next build)
+
+### Job `e2e`
+Levanta servicios reales y corre el smoke test completo:
+
+- Postgres + PostGIS 3.4 como service container
+- Redis 7 como service container
+- Aplica migraciones (`prisma migrate deploy`)
+- Seedea super-admin
+- Builda y arranca el API en background
+- Espera `/api/health` con polling
+- Corre `scripts/smoke-test.sh` (27 checks: auth, multi-tenancy, CRUD, presigned upload, marketplace, leads + timeline)
+- Si falla, vuelca los logs del API
+
+Setea `COOKIE_INSECURE=1` porque corre sobre HTTP plano (localhost en el runner). Cancela runs viejos del mismo PR cuando llega un push nuevo.
 
 ### Tests
 
