@@ -6,10 +6,11 @@
 #
 # En Easypanel:
 #   - Importá este archivo desde "Compose" o crea servicios individuales.
-#   - El Caddy de Easypanel termina TLS y rutea por dominio. Conectá el
-#     dominio `api.tu-dominio.com` → service `api` puerto 3001 y
-#     `app.tu-dominio.com` (más wildcard `*.tu-dominio.com`) → `web` 3000.
-#   - Setear secrets en .env (no commitear): JWT_*, SUPER_ADMIN_*, R2_*.
+#   - El proxy de Easypanel termina TLS y rutea por dominio. Conectá:
+#       api.tu-dominio.com   -> service api  (puerto 3001)
+#       app.tu-dominio.com   -> service web  (puerto 3000)
+#       *.tu-dominio.com     -> service web  (puerto 3000)
+#   - Para los secrets ver .env.prod.example.
 #
 # Local prod-like:
 #   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
@@ -17,15 +18,20 @@
 # Para correr el seed del super-admin la primera vez:
 #   docker compose -f docker-compose.prod.yml exec api \
 #     node ../../node_modules/prisma/build/index.js db seed --schema=./prisma/schema.prisma
+#
+# Nota: TODOS los valores con `${...}` van entre comillas dobles. Sin las
+# comillas, el `:` dentro de URLs (`https://...`, `postgresql://...`) o
+# dentro de mensajes de error (`:?...`) confunde al parser YAML estricto
+# de algunas plataformas (ej. Easypanel) y rechaza el archivo.
 
 services:
   postgres:
     image: postgis/postgis:16-3.4-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-inmobiliaria}
-      POSTGRES_USER: ${POSTGRES_USER:-inmobiliaria}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requerido}
+      POSTGRES_DB: "${POSTGRES_DB:-inmobiliaria}"
+      POSTGRES_USER: "${POSTGRES_USER:-inmobiliaria}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requerido}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -57,27 +63,27 @@ services:
       redis:
         condition: service_healthy
     environment:
-      NODE_ENV: production
-      PORT: 3001
-      API_PREFIX: api
-      DATABASE_URL: postgresql://${POSTGRES_USER:-inmobiliaria}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-inmobiliaria}?schema=public
-      REDIS_URL: redis://redis:6379
-      CORS_ORIGINS: ${CORS_ORIGINS:?CORS_ORIGINS requerido (ej: https://app.tu-dominio.com)}
-      ROOT_DOMAIN: ${ROOT_DOMAIN:?ROOT_DOMAIN requerido (ej: tu-dominio.com)}
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET requerido}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET requerido}
-      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
-      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
-      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-admin@miapp.test}
-      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:?SUPER_ADMIN_PASSWORD requerido}
-      SUPER_ADMIN_FIRST_NAME: ${SUPER_ADMIN_FIRST_NAME:-Platform}
-      SUPER_ADMIN_LAST_NAME: ${SUPER_ADMIN_LAST_NAME:-Admin}
+      NODE_ENV: "production"
+      PORT: "3001"
+      API_PREFIX: "api"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-inmobiliaria}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-inmobiliaria}?schema=public"
+      REDIS_URL: "redis://redis:6379"
+      CORS_ORIGINS: "${CORS_ORIGINS:?CORS_ORIGINS requerido}"
+      ROOT_DOMAIN: "${ROOT_DOMAIN:?ROOT_DOMAIN requerido}"
+      JWT_ACCESS_SECRET: "${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET requerido}"
+      JWT_REFRESH_SECRET: "${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET requerido}"
+      JWT_ACCESS_TTL: "${JWT_ACCESS_TTL:-15m}"
+      JWT_REFRESH_TTL: "${JWT_REFRESH_TTL:-7d}"
+      SUPER_ADMIN_EMAIL: "${SUPER_ADMIN_EMAIL:-admin@miapp.test}"
+      SUPER_ADMIN_PASSWORD: "${SUPER_ADMIN_PASSWORD:?SUPER_ADMIN_PASSWORD requerido}"
+      SUPER_ADMIN_FIRST_NAME: "${SUPER_ADMIN_FIRST_NAME:-Platform}"
+      SUPER_ADMIN_LAST_NAME: "${SUPER_ADMIN_LAST_NAME:-Admin}"
       # R2 (Cloudflare) — vacío usa mock storage en disco (volume).
-      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
-      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
-      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
-      R2_BUCKET: ${R2_BUCKET:-}
-      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
+      R2_ACCOUNT_ID: "${R2_ACCOUNT_ID:-}"
+      R2_ACCESS_KEY_ID: "${R2_ACCESS_KEY_ID:-}"
+      R2_SECRET_ACCESS_KEY: "${R2_SECRET_ACCESS_KEY:-}"
+      R2_BUCKET: "${R2_BUCKET:-}"
+      R2_PUBLIC_URL: "${R2_PUBLIC_URL:-}"
     volumes:
       # Persistir uploads cuando se usa el mock storage (sin R2).
       - api_uploads:/repo/apps/api/storage/uploads
@@ -97,17 +103,17 @@ services:
       args:
         # Estos NEXT_PUBLIC_* se inlinean en el bundle del cliente y por eso
         # se pasan en build (no en runtime). Si cambian, hay que rebuildear.
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL requerido}
-        NEXT_PUBLIC_ROOT_DOMAIN: ${NEXT_PUBLIC_ROOT_DOMAIN:?NEXT_PUBLIC_ROOT_DOMAIN requerido}
+        NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL requerido}"
+        NEXT_PUBLIC_ROOT_DOMAIN: "${NEXT_PUBLIC_ROOT_DOMAIN:?NEXT_PUBLIC_ROOT_DOMAIN requerido}"
     restart: unless-stopped
     depends_on:
       - api
     environment:
-      NODE_ENV: production
-      PORT: 3000
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-      NEXT_PUBLIC_ROOT_DOMAIN: ${NEXT_PUBLIC_ROOT_DOMAIN}
-      WEB_SESSION_SECRET: ${WEB_SESSION_SECRET:?WEB_SESSION_SECRET requerido}
+      NODE_ENV: "production"
+      PORT: "3000"
+      NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL}"
+      NEXT_PUBLIC_ROOT_DOMAIN: "${NEXT_PUBLIC_ROOT_DOMAIN}"
+      WEB_SESSION_SECRET: "${WEB_SESSION_SECRET:?WEB_SESSION_SECRET requerido}"
     ports:
       - "${WEB_PORT:-3000}:3000"
     healthcheck:
