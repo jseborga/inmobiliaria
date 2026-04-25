@@ -83,7 +83,7 @@ bash scripts/smoke-test.sh
 - **Fase 4:** Gestión de propiedades + upload de imágenes (completado)
 - **Fase 5:** Portal público + búsqueda
   - **5.0** Fundaciones del web (shadcn, cliente API, middleware multi-tenant) — completado
-  - **5.1** Marketplace público + captura de leads — pendiente
+  - **5.1** Marketplace público + captura de leads — completado
   - **5.2** Admin: autenticación — pendiente
   - **5.3** Admin: gestión de propiedades + upload imágenes — pendiente
   - **5.4** Admin: CRM leads + timeline — pendiente
@@ -288,6 +288,23 @@ El middleware inyecta los headers `x-app-context` y `x-tenant-slug` para que los
 - `createApiClient({ baseUrl, accessToken, tenantSlug, cookieHeader })` — wrapper sobre `fetch` con manejo automático de `Authorization`, `X-Tenant-Slug`, JSON, `cache` y `tags` de Next.
 - `getServerApi()` — builder para Server Components y route handlers que toma access token de la cookie httpOnly `web_session` y forwardea las cookies de refresh al backend.
 - `ApiError` — error tipado con `status`, `body` y `displayMessage` para presentar al usuario.
+
+## Marketplace público (Fase 5.1)
+
+Páginas públicas (sin auth) consumidas desde el web:
+
+| Ruta | Contexto | Descripción |
+|---|---|---|
+| `/` | cualquiera | Landing tenant-aware (CTA cambia si estamos en `lvh.me` vs `acme.lvh.me`) |
+| `/properties` | cualquiera | Listado con filtros (operación, tipo, ubicación, precio, dorm./baños). En marketplace global lista todos los tenants; en sitio de tenant filtra por ese tenant |
+| `/properties/[slug]` | tenant | Detalle con galería de fotos, datos de contacto y form de captura de lead |
+
+Implementación:
+
+- Server Components con `getPublicApi()` (`apps/web/src/lib/api/public.ts`) — toma el `tenantSlug` del contexto resuelto por el middleware.
+- En el marketplace global (`lvh.me`), las cards linkean al sitio del tenant (`acme.lvh.me/properties/[slug]`) usando `buildTenantUrl()`.
+- El form de leads (`apps/web/src/components/leads/lead-form.tsx`) usa `react-hook-form` + Zod (`publicLeadSchema` de `@inmobiliaria/shared`) y postea a `/api/leads`, un route handler que proxea a `POST /api/public/leads` en el backend, forwardeando `User-Agent` y `Referer` para auditoría.
+- Filtros sincronizan con la URL — Server Component re-renderiza al cambiar `searchParams`.
 
 ### Tests
 
