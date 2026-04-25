@@ -88,7 +88,10 @@ bash scripts/smoke-test.sh
   - **5.3** Admin: gestión de propiedades + upload imágenes — completado
   - **5.4** Admin: CRM leads + timeline — completado
 - **Fase 6:** CRM de leads (API + captura pública completos; UI en Fase 5.4)
-- **Fase 7:** Observabilidad + deploy producción
+- **Fase 7:** Deploy productivo
+  - **7.0** Dockerfiles + migrations + `docker-compose.prod.yml` (guía Easypanel) — completado
+  - **7.1** Observabilidad (Sentry, structured logs) — pendiente
+  - **7.2** CI (typecheck/lint/build en PR) — pendiente
 
 ## Convenciones
 
@@ -401,6 +404,60 @@ Ordenado descendente (más reciente arriba). Distingue visualmente:
 ### Filtro `mine=1`
 
 El UI checkbox "Solo míos" se traduce a `?assignedUserId=me` en la API, que resuelve `me` al usuario autenticado en el controller.
+
+## Deploy productivo (Fase 7.0)
+
+Stack containerizada lista para Easypanel u otro orquestador con Docker.
+
+### Estructura
+
+| Archivo | Para qué |
+|---|---|
+| `apps/api/Dockerfile` | Imagen multi-stage del API (Nest + Prisma). Aplica `migrate deploy` al arrancar |
+| `apps/web/Dockerfile` | Imagen multi-stage del web (Next.js standalone). `NEXT_PUBLIC_*` se inlinean en build |
+| `docker-compose.prod.yml` | Postgres + PostGIS, Redis, API, web. Volúmenes persistentes |
+| `.env.prod.example` | Plantilla de variables (copiar a `.env.prod` y editar) |
+| `apps/api/prisma/migrations/0_init/` | Migración inicial (incluye triggers PostGIS) |
+
+### Local prod-like
+
+```bash
+cp .env.prod.example .env.prod
+# editar secretos: POSTGRES_PASSWORD, JWT_*, SUPER_ADMIN_*, WEB_SESSION_SECRET
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+
+# Crear el primer super-admin (lee SUPER_ADMIN_* del entorno):
+docker compose -f docker-compose.prod.yml exec api \
+  node ../../node_modules/prisma/build/index.js db seed --schema=./prisma/schema.prisma
+```
+
+API queda en `:3001/api/health`, web en `:3000/`.
+
+### Easypanel
+
+1. **Postgres + Redis**: usar los templates de Easypanel. Postgres debe tener PostGIS — la imagen sugerida es `postgis/postgis:16-3.4-alpine` (template "App" con esa imagen, o reemplazá la imagen del template Postgres por esta).
+2. **API**: app tipo "Dockerfile" apuntando a `apps/api/Dockerfile`, build context = raíz del repo.
+3. **Web**: app tipo "Dockerfile" apuntando a `apps/web/Dockerfile`, mismo build context. **Importante:** los `NEXT_PUBLIC_API_URL` y `NEXT_PUBLIC_ROOT_DOMAIN` van como **build args**, no como env runtime — Easypanel tiene un campo separado para eso. Si los cambiás, hay que rebuildear.
+4. **Dominios**: Easypanel + Caddy ruteán por subdominio. Sugerido:
+   - `api.tu-dominio.com` → service `api` puerto 3001.
+   - `app.tu-dominio.com` y wildcard `*.tu-dominio.com` → service `web` puerto 3000 (el wildcard se necesita para los sitios por inmobiliaria, p.ej. `acme.tu-dominio.com`).
+5. **TLS wildcard**: para que `*.tu-dominio.com` reciba certificado, configurá DNS challenge en Caddy (Easypanel lo soporta vía env del proxy).
+6. **Volúmenes**: si no usás R2, montá un volumen sobre `/repo/apps/api/storage/uploads` para persistir las imágenes del mock.
+
+### Variables críticas
+
+- `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `WEB_SESSION_SECRET`: generar con `openssl rand -base64 48`. **Nunca reusar entre envs**.
+- `CORS_ORIGINS`: lista coma-separada (incluí HTTPS y todos los subdominios desde donde el web haga fetch).
+- `R2_*`: si están las 5, el storage usa Cloudflare R2; si alguna falta, cae al mock en disco.
+
+### Migraciones
+
+El entrypoint del API ejecuta `prisma migrate deploy` antes de arrancar — idempotente. Para nuevas migraciones en dev:
+
+```bash
+pnpm --filter @inmobiliaria/api exec prisma migrate dev --name descripcion_corta
+git add apps/api/prisma/migrations
+```
 
 ### Tests
 

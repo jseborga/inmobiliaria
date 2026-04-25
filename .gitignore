@@ -13,7 +13,9 @@ build/
 .env
 .env.local
 .env.*.local
+.env.prod
 !.env.example
+!.env.prod.example
 
 # Logs
 logs/
@@ -46,9 +48,10 @@ playwright/.cache/
 apps/api/prisma/*.db
 apps/api/prisma/*.db-journal
 
-# Uploads locales
+# Uploads locales (mock storage en dev)
 uploads/
 tmp/
+**/storage/uploads/
 
 # Docker volumes
 .docker/
