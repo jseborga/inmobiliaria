@@ -1,6 +1,9 @@
 import { MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { LoggerModule } from 'nestjs-pino';
+import { buildLoggerConfig } from './common/observability/logger.config';
+import { SentryExceptionFilter } from './common/observability/sentry.filter';
 import { TenantContextInterceptor } from './common/tenant/tenant-context.interceptor';
 import { TenantResolverMiddleware } from './common/tenant/tenant.middleware';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -20,6 +23,7 @@ import { PrismaModule } from './prisma/prisma.module';
       isGlobal: true,
       envFilePath: ['.env.local', '.env'],
     }),
+    LoggerModule.forRoot(buildLoggerConfig()),
     PrismaModule,
     AuthModule,
     PlatformAdminModule,
@@ -33,6 +37,8 @@ import { PrismaModule } from './prisma/prisma.module';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },
+    // Filter global: 5xx → Sentry, 4xx → contrato HTTP estándar de Nest.
+    { provide: APP_FILTER, useClass: SentryExceptionFilter },
   ],
 })
 export class AppModule implements NestModule {

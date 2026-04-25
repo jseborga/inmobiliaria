@@ -71,6 +71,11 @@ export class StorageService {
     return this.driver === 'mock';
   }
 
+  /** Nombre del driver activo para reportarlo en healthcheck. */
+  driverName(): 'r2' | 'mock' {
+    return this.driver;
+  }
+
   /** Valida los parámetros de subida y rechaza todo lo que no sea imagen razonable. */
   private validate(req: PresignRequest): void {
     if (!ALLOWED_CONTENT_TYPES.has(req.contentType)) {

@@ -8,6 +8,8 @@ const nextConfig = {
   output: 'standalone',
   experimental: {
     typedRoutes: true,
+    // Habilita instrumentation.ts → carga de Sentry en boot.
+    instrumentationHook: true,
   },
 };
 

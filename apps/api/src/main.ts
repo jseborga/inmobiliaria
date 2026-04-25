@@ -3,14 +3,23 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { initSentry } from './common/observability/sentry';
+
+// Sentry debe inicializarse ANTES de que Nest cree la app para que
+// patchee fetch/http globales y capture errores tempranos.
+const sentryEnabled = initSentry();
 
 async function bootstrap() {
+  // bufferLogs=true para que mensajes durante el bootstrap se acumulen y
+  // recién emitan cuando Pino está listo (vía `app.useLogger`).
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    logger: ['error', 'warn', 'log', 'debug'],
+    bufferLogs: true,
   });
+  app.useLogger(app.get(PinoLogger));
 
   const config = app.get(ConfigService);
   const port = config.get<number>('PORT', 3001);
@@ -41,7 +50,11 @@ async function bootstrap() {
   );
 
   await app.listen(port);
-  Logger.log(`API escuchando en http://localhost:${port}/${apiPrefix}`, 'Bootstrap');
+  Logger.log(
+    `API escuchando en http://localhost:${port}/${apiPrefix} ` +
+      `(sentry=${sentryEnabled ? 'on' : 'off'})`,
+    'Bootstrap',
+  );
 }
 
 bootstrap().catch((err) => {

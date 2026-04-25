@@ -90,7 +90,7 @@ bash scripts/smoke-test.sh
 - **Fase 6:** CRM de leads (API + captura pública completos; UI en Fase 5.4)
 - **Fase 7:** Deploy productivo
   - **7.0** Dockerfiles + migrations + `docker-compose.prod.yml` (guía Easypanel) — completado
-  - **7.1** Observabilidad (Sentry, structured logs) — pendiente
+  - **7.1** Observabilidad (Pino logs + Sentry + health enriquecido) — completado
   - **7.2** CI (typecheck/lint/build en PR) — pendiente
 
 ## Convenciones
@@ -459,6 +459,55 @@ El entrypoint del API ejecuta `prisma migrate deploy` antes de arrancar — idem
 pnpm --filter @inmobiliaria/api exec prisma migrate dev --name descripcion_corta
 git add apps/api/prisma/migrations
 ```
+
+## Observabilidad (Fase 7.1)
+
+### Logs estructurados (API)
+
+`nestjs-pino` reemplaza el logger default de Nest:
+
+- **Producción**: JSON estructurado, parseable por cualquier log aggregator (Loki, Datadog, ELK).
+- **Desarrollo**: pretty-printed con `pino-pretty`, una línea por request.
+- Cada request recibe un `x-request-id` (UUID) que se devuelve en la respuesta y se incluye en cada log line — correlación browser ↔ server.
+- Healthcheck silenciado (`/api/health` no llena los logs).
+- Niveles dinámicos: 5xx → `error`, 4xx → `warn`, 2xx/3xx → `info`.
+- Variable `LOG_LEVEL` (default `info` en prod, `debug` en dev).
+- Redact: `authorization`, `cookie`, `password`, `set-cookie` nunca aparecen en logs.
+
+### Sentry
+
+Tres puntos de captura, **todos con feature-flag por DSN** (no-op si vacío):
+
+| SDK | Trigger | DSN env |
+|---|---|---|
+| `@sentry/node` (API) | Errores 5xx + uncaught en NestJS, vía `SentryExceptionFilter` global | `SENTRY_DSN` |
+| `@sentry/nextjs` (server) | Errores en Server Components / route handlers / server actions | `SENTRY_DSN` |
+| `@sentry/nextjs` (client) | Errores en componentes cliente (sin replays) | `NEXT_PUBLIC_SENTRY_DSN` |
+
+Decisiones:
+
+- **4xx no se reportan**: son ruido (validaciones, 401, 404 normales) — solo `>= 500`.
+- **Tracing desactivado por defecto** (`SENTRY_TRACES_SAMPLE_RATE=0`); subilo si querés perf monitoring.
+- **`release`** se toma de `GIT_SHA` (server) y `NEXT_PUBLIC_GIT_SHA` (client) — inyectalo desde CI/build para correlacionar errores con commits.
+
+### Healthcheck enriquecido
+
+`GET /api/health` ahora:
+
+```json
+{
+  "status": "ok",          // o "degraded" si DB no responde
+  "uptime": 142.7,
+  "db": "up",
+  "storage": "mock",       // o "r2"
+  "env": "production",
+  "release": "abc1234",
+  "timestamp": "..."
+}
+```
+
+- **HTTP 200 si OK, 503 si degraded** — orquestadores (Easypanel/Caddy/Docker) lo usan para reciclar el contenedor o sacarlo del pool.
+- `release` sale de `GIT_SHA` cuando está; útil para confirmar qué versión está corriendo.
 
 ### Tests
 
