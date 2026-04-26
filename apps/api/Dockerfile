@@ -73,11 +73,20 @@ COPY packages/config/package.json packages/config/
 # para que el symlink en apps/api/node_modules apunte a algo real.
 COPY packages/shared ./packages/shared
 
+# Schema necesario para `prisma generate` (más abajo).
+COPY apps/api/prisma ./apps/api/prisma
+
 # pnpm install --prod skipea devDependencies → ~250MB en vez de ~1GB.
 # `--filter @inmobiliaria/api...` instala solo lo que el API necesita
 # (con sus deps transitivas) — no instala las deps específicas del web.
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --prod --frozen-lockfile --filter "@inmobiliaria/api..."
+
+# Generar el cliente Prisma DENTRO del node_modules de `prod-deps`.
+# El runner copia este node_modules — sin esto, los enums generados
+# (LeadActivityKind, etc.) quedan undefined en runtime y revientan al
+# require('@prisma/client').
+RUN cd apps/api && pnpm exec prisma generate
 
 # ----------------------------------------------------------------------------
 # Stage: runner — imagen final mínima
