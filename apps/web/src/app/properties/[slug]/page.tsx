@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ImageGallery } from '@/components/properties/image-gallery';
 import { MediaViewer } from '@/components/properties/media-viewer';
+import { PropertyDetailMap } from '@/components/map/property-detail-map';
 import { LeadForm } from '@/components/leads/lead-form';
 import { ApiError } from '@/lib/api';
 import { getPublicApi } from '@/lib/api/public';
@@ -147,6 +148,13 @@ export default async function PropertyDetailPage({
           ) : null}
 
           <MediaViewer videoUrl={property.videoUrl} tour360Url={property.tour360Url} />
+
+          <PropertyDetailMap
+            lat={property.latitude != null ? Number(property.latitude) : null}
+            lng={property.longitude != null ? Number(property.longitude) : null}
+            title={property.title}
+            addressLine={location || null}
+          />
         </div>
 
         <aside className="space-y-6">
