@@ -245,6 +245,11 @@ model Property {
   videoUrl      String?                                @map("video_url")
   /// URL externa de tour 360 (Matterport, Kuula, etc.).
   tour360Url    String?                                @map("tour_360_url")
+  /// pgvector(1536) con el embedding semántico de la propiedad. Lo gestiona
+  /// PropertyIndexerService cuando cambian title/description/city/zone/type/operation.
+  embedding     Unsupported("vector(1536)")?
+  embeddingModel String?                               @map("embedding_model")
+  embeddedAt    DateTime?                              @map("embedded_at")
   createdById   String?                                @map("created_by_id")
   publishedAt   DateTime?                              @map("published_at")
   archivedAt    DateTime?                              @map("archived_at")

@@ -12,6 +12,8 @@ import {
   Currency as CurrencyEnum,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EmbeddingsService } from '../ai/embeddings.service';
+import { PropertyIndexerService } from '../ai/property-indexer.service';
 import { StorageService } from '../storage/storage.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
@@ -35,11 +37,23 @@ export class PropertiesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly indexer: PropertyIndexerService,
+    private readonly embeddings: EmbeddingsService,
   ) {}
 
   // -------------------------------------------------------------------------
   // Admin (tenant-scoped)
   // -------------------------------------------------------------------------
+
+  /**
+   * Dispara reindex semántico fire-and-forget. Nunca debe romper el flujo
+   * principal — si el indexer falla, queda en logs pero el create/update sigue.
+   */
+  private scheduleReindex(propertyId: string): void {
+    void this.indexer.indexProperty(propertyId).catch((err) => {
+      this.logger.warn(`Reindex async falló: ${(err as Error).message}`);
+    });
+  }
 
   async create(tenantId: string, userId: string, dto: CreatePropertyDto) {
     const slug = await this.resolveSlug(tenantId, dto.slug, dto.title);
@@ -47,7 +61,7 @@ export class PropertiesService {
     const now = new Date();
 
     try {
-      return await this.prisma.raw.property.create({
+      const created = await this.prisma.raw.property.create({
         data: {
           tenantId,
           slug,
@@ -75,6 +89,8 @@ export class PropertiesService {
         },
         include: { images: { orderBy: { order: 'asc' } } },
       });
+      this.scheduleReindex(created.id);
+      return created;
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new ConflictException(`Ya existe una propiedad con slug "${slug}"`);
@@ -135,11 +151,21 @@ export class PropertiesService {
     };
 
     try {
-      return await this.prisma.raw.property.update({
+      const updated = await this.prisma.raw.property.update({
         where: { id },
         data,
         include: { images: { orderBy: { order: 'asc' } } },
       });
+      // Reindex semántico solo si cambió algún campo que afecta el embedding.
+      const semanticChanged =
+        dto.title !== undefined ||
+        dto.description !== undefined ||
+        dto.operation !== undefined ||
+        dto.type !== undefined ||
+        dto.city !== undefined ||
+        dto.zone !== undefined;
+      if (semanticChanged) this.scheduleReindex(updated.id);
+      return updated;
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new ConflictException('Conflicto de slug en este tenant');
@@ -210,26 +236,40 @@ export class PropertiesService {
    */
   async publicList(filters: ListPropertiesDto, tenantIdOptional?: string) {
     const tenantId = tenantIdOptional ?? null;
-    const { where, take, skip } = this.buildFilters(tenantId, filters, /*publicOnly*/ true);
 
-    if (!this.hasGeo(filters)) {
-      const [items, total] = await Promise.all([
-        this.prisma.raw.property.findMany({
-          where,
-          orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
-          take,
-          skip,
-          include: {
-            images: { orderBy: { order: 'asc' }, take: 1 },
-            tenant: { select: { id: true, slug: true, name: true, logoUrl: true } },
-          },
-        }),
-        this.prisma.raw.property.count({ where }),
-      ]);
-      return { items, total, take, skip };
+    // Búsqueda geoespacial tiene prioridad (requiere PostGIS).
+    if (this.hasGeo(filters)) {
+      return this.geoSearch({ tenantId: tenantIdOptional, filters, publicOnly: true });
     }
 
-    return this.geoSearch({ tenantId: tenantIdOptional, filters, publicOnly: true });
+    // Búsqueda semántica: si hay `q` con suficiente texto y embeddings activos.
+    const q = filters.q?.trim();
+    if (q && q.length >= 4 && (await this.embeddings.isReady())) {
+      const semantic = await this.semanticSearch({
+        tenantId,
+        q,
+        filters,
+        publicOnly: true,
+      });
+      if (semantic) return semantic;
+      // Si falla el semántico (key inválida, API caída), caemos al keyword search.
+    }
+
+    const { where, take, skip } = this.buildFilters(tenantId, filters, /*publicOnly*/ true);
+    const [items, total] = await Promise.all([
+      this.prisma.raw.property.findMany({
+        where,
+        orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
+        take,
+        skip,
+        include: {
+          images: { orderBy: { order: 'asc' }, take: 1 },
+          tenant: { select: { id: true, slug: true, name: true, logoUrl: true } },
+        },
+      }),
+      this.prisma.raw.property.count({ where }),
+    ]);
+    return { items, total, take, skip };
   }
 
   /** Detalle público por slug, requiere saber el tenant (subdominio o slug). */
@@ -510,6 +550,167 @@ export class PropertiesService {
    * genera a partir del título. Si colisiona dentro del tenant, agrega sufijo
    * aleatorio hasta encontrar uno libre.
    */
+  /**
+   * Búsqueda semántica con pgvector.
+   *
+   * 1. Genera embedding de la query del usuario.
+   * 2. SQL raw: ORDER BY embedding <=> query_embedding (cosine distance).
+   * 3. Aplica los mismos filtros tradicionales (operación, tipo, precio, etc.).
+   * 4. Solo considera propiedades indexadas (embedding IS NOT NULL).
+   *
+   * Si la generación de embedding falla, devuelve null para que el caller
+   * caiga al keyword search normal.
+   */
+  private async semanticSearch(opts: {
+    tenantId: string | null;
+    q: string;
+    filters: ListPropertiesDto;
+    publicOnly: boolean;
+  }): Promise<{
+    items: unknown[];
+    total: number;
+    take: number;
+    skip: number;
+  } | null> {
+    const { tenantId, q, filters: f, publicOnly } = opts;
+
+    let embedded: { vector: number[]; model: string } | null = null;
+    try {
+      embedded = await this.embeddings.embed(q);
+    } catch (err) {
+      this.logger.warn(`Embedding de query falló: ${(err as Error).message}`);
+      return null;
+    }
+    if (!embedded) return null;
+
+    const take = Math.min(Math.max(f.take ?? 20, 1), 100);
+    const skip = Math.max(f.skip ?? 0, 0);
+    const vectorLiteral = `[${embedded.vector.join(',')}]`;
+
+    const conditions: Prisma.Sql[] = [Prisma.sql`p.embedding IS NOT NULL`];
+    if (tenantId) conditions.push(Prisma.sql`p.tenant_id = ${tenantId}`);
+    if (publicOnly) conditions.push(Prisma.sql`p.status = 'PUBLISHED'`);
+    else if (f.status) conditions.push(Prisma.sql`p.status = ${f.status}::text::"PropertyStatus"`);
+
+    if (f.operation)
+      conditions.push(Prisma.sql`p.operation = ${f.operation}::text::"PropertyOperation"`);
+    if (f.type) conditions.push(Prisma.sql`p.type = ${f.type}::text::"PropertyType"`);
+    if (f.currency) conditions.push(Prisma.sql`p.currency = ${f.currency}::text::"Currency"`);
+    if (f.city) conditions.push(Prisma.sql`LOWER(p.city) = LOWER(${f.city})`);
+    if (f.zone) conditions.push(Prisma.sql`LOWER(p.zone) = LOWER(${f.zone})`);
+    if (f.bedrooms !== undefined) conditions.push(Prisma.sql`p.bedrooms >= ${f.bedrooms}`);
+    if (f.bathrooms !== undefined) conditions.push(Prisma.sql`p.bathrooms >= ${f.bathrooms}`);
+    if (f.minPrice !== undefined) conditions.push(Prisma.sql`p.price >= ${f.minPrice}`);
+    if (f.maxPrice !== undefined) conditions.push(Prisma.sql`p.price <= ${f.maxPrice}`);
+
+    const whereSql = Prisma.sql`${Prisma.join(conditions, ' AND ')}`;
+
+    const rows = await this.prisma.raw.$queryRaw<
+      Array<{
+        id: string;
+        tenant_id: string;
+        slug: string;
+        title: string;
+        description: string | null;
+        operation: string;
+        type: string;
+        status: string;
+        price: string;
+        currency: string;
+        area_sqm: string | null;
+        bedrooms: number | null;
+        bathrooms: number | null;
+        parking_spaces: number | null;
+        city: string | null;
+        zone: string | null;
+        address: string | null;
+        latitude: string | null;
+        longitude: string | null;
+        video_url: string | null;
+        tour_360_url: string | null;
+        published_at: Date | null;
+        created_at: Date;
+        similarity: number;
+      }>
+    >(Prisma.sql`
+      SELECT
+        p.id, p.tenant_id, p.slug, p.title, p.description,
+        p.operation::text AS operation, p.type::text AS type, p.status::text AS status,
+        p.price::text AS price, p.currency::text AS currency,
+        p.area_sqm::text AS area_sqm, p.bedrooms, p.bathrooms, p.parking_spaces,
+        p.city, p.zone, p.address,
+        p.latitude::text AS latitude, p.longitude::text AS longitude,
+        p.video_url, p.tour_360_url,
+        p.published_at, p.created_at,
+        (1 - (p.embedding <=> ${vectorLiteral}::vector)) AS similarity
+      FROM properties p
+      WHERE ${whereSql}
+      ORDER BY p.embedding <=> ${vectorLiteral}::vector ASC
+      LIMIT ${take} OFFSET ${skip}
+    `);
+
+    const totalRes = await this.prisma.raw.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+      SELECT COUNT(*)::bigint AS count FROM properties p WHERE ${whereSql}
+    `);
+    const total = Number(totalRes[0]?.count ?? 0);
+
+    // Cargar imágenes y tenant para los resultados.
+    const ids = rows.map((r) => r.id);
+    const tenantIds = Array.from(new Set(rows.map((r) => r.tenant_id)));
+    const [images, tenants] = await Promise.all([
+      ids.length
+        ? this.prisma.raw.propertyImage.findMany({
+            where: { propertyId: { in: ids } },
+            orderBy: { order: 'asc' },
+          })
+        : Promise.resolve([]),
+      tenantIds.length
+        ? this.prisma.raw.tenant.findMany({
+            where: { id: { in: tenantIds } },
+            select: { id: true, slug: true, name: true, logoUrl: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    const imagesByProp = new Map<string, typeof images>();
+    for (const img of images) {
+      const arr = imagesByProp.get(img.propertyId) ?? [];
+      arr.push(img);
+      imagesByProp.set(img.propertyId, arr);
+    }
+    const tenantById = new Map(tenants.map((t) => [t.id, t]));
+
+    const items = rows.map((r) => ({
+      id: r.id,
+      tenantId: r.tenant_id,
+      slug: r.slug,
+      title: r.title,
+      description: r.description,
+      operation: r.operation,
+      type: r.type,
+      status: r.status,
+      price: r.price,
+      currency: r.currency,
+      areaSqm: r.area_sqm,
+      bedrooms: r.bedrooms,
+      bathrooms: r.bathrooms,
+      parkingSpaces: r.parking_spaces,
+      city: r.city,
+      zone: r.zone,
+      address: r.address,
+      latitude: r.latitude,
+      longitude: r.longitude,
+      videoUrl: r.video_url,
+      tour360Url: r.tour_360_url,
+      publishedAt: r.published_at,
+      createdAt: r.created_at,
+      similarity: Number(r.similarity),
+      images: (imagesByProp.get(r.id) ?? []).slice(0, 1),
+      tenant: tenantById.get(r.tenant_id) ?? undefined,
+    }));
+
+    return { items, total, take, skip };
+  }
+
   private async resolveSlug(
     tenantId: string,
     raw: string | undefined,

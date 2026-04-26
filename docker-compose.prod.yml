@@ -26,7 +26,12 @@
 
 services:
   postgres:
-    image: postgis/postgis:16-3.4-alpine
+    # Imagen con PostGIS 3.4 + pgvector 0.7+. Necesario para:
+    #  - PostGIS (búsqueda geoespacial de propiedades).
+    #  - pgvector (RAG semántico — embeddings de propiedades).
+    # Si preferís otra imagen, asegurate que tenga ambas extensiones; sino
+    # la migración 3_pgvector va a fallar al hacer CREATE EXTENSION vector.
+    image: imresamu/postgis-pgvector:16-3.4-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: "${POSTGRES_DB:-inmobiliaria}"

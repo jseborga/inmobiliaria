@@ -1,13 +1,17 @@
 import Link from 'next/link';
 import { ArrowLeft, Sparkles } from 'lucide-react';
 import { PlatformAISettingsForm } from '@/components/platform-admin/platform-ai-settings-form';
-import { getPlatformAISettings } from '@/lib/actions/ai-settings';
+import { ReindexButton } from '@/components/platform-admin/reindex-button';
+import { getEmbeddingsStatus, getPlatformAISettings } from '@/lib/actions/ai-settings';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Configuración de IA' };
 
 export default async function PlatformAISettingsPage() {
-  const settings = await getPlatformAISettings();
+  const [settings, embStatus] = await Promise.all([
+    getPlatformAISettings(),
+    getEmbeddingsStatus(),
+  ]);
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
@@ -31,6 +35,10 @@ export default async function PlatformAISettingsPage() {
       </header>
 
       <PlatformAISettingsForm initial={settings} />
+
+      <div className="mt-6">
+        <ReindexButton embeddingsReady={embStatus.ready} />
+      </div>
     </main>
   );
 }

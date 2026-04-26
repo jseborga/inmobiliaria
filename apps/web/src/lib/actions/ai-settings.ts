@@ -120,6 +120,35 @@ export async function getPlatformTenantAIUsage(
   }
 }
 
+export interface ReindexResult {
+  total: number;
+  indexed: number;
+  skipped: number;
+}
+
+export async function reindexProperties(
+  onlyMissing: boolean,
+): Promise<AiSettingsActionResult<ReindexResult>> {
+  await requirePlatformAdmin();
+  try {
+    const api = getPlatformApi({ cache: 'no-store' });
+    const data = await api.post<ReindexResult>('/platform-admin/ai/reindex', { onlyMissing });
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: apiErrorTo(err) };
+  }
+}
+
+export async function getEmbeddingsStatus(): Promise<{ ready: boolean }> {
+  await requirePlatformAdmin();
+  try {
+    const api = getPlatformApi({ cache: 'no-store' });
+    return await api.get<{ ready: boolean }>('/platform-admin/ai/embeddings/status');
+  } catch {
+    return { ready: false };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Tenant (OWNER/ADMIN)
 // ---------------------------------------------------------------------------
