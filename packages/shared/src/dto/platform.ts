@@ -24,6 +24,21 @@ export const createTenantSchema = z.object({
 });
 export type CreateTenantInput = z.infer<typeof createTenantSchema>;
 
+export const updateTenantSchema = z.object({
+  name: z.string().min(2).max(120).optional(),
+  plan: z.nativeEnum(TenantPlan).optional(),
+  phone: phoneSchema.optional().or(z.literal('')),
+  contactEmail: emailSchema.optional().or(z.literal('')),
+  address: z.string().max(200).optional(),
+  city: z.string().max(80).optional(),
+});
+export type UpdateTenantInput = z.infer<typeof updateTenantSchema>;
+
+export const resetUserPasswordSchema = z.object({
+  newPassword: passwordSchema,
+});
+export type ResetUserPasswordInput = z.infer<typeof resetUserPasswordSchema>;
+
 export interface TenantListItem {
   id: string;
   slug: string;
@@ -33,4 +48,30 @@ export interface TenantListItem {
   city?: string | null;
   createdAt: string;
   _count?: { users?: number };
+}
+
+export interface TenantUserItem {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName?: string | null;
+  role: string;
+  status: string;
+  lastLoginAt?: string | null;
+  createdAt: string;
+}
+
+export interface TenantDetail {
+  id: string;
+  slug: string;
+  name: string;
+  plan: string;
+  status: string;
+  city?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  contactEmail?: string | null;
+  createdAt: string;
+  counts: { users: number; properties: number; leads: number };
+  users: TenantUserItem[];
 }

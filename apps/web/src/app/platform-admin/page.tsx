@@ -84,17 +84,22 @@ export default async function PlatformDashboardPage() {
               </thead>
               <tbody>
                 {tenants.map((t) => (
-                  <tr key={t.id} className="border-b last:border-b-0">
-                    <Td>
-                      <code className="font-mono text-xs">{t.slug}</code>
-                    </Td>
-                    <Td className="font-medium">{t.name}</Td>
-                    <Td>
+                  <tr
+                    key={t.id}
+                    className="cursor-pointer border-b last:border-b-0 hover:bg-muted/40"
+                  >
+                    <RowLink href={`/platform-admin/tenants/${t.id}`} className="font-mono text-xs">
+                      {t.slug}
+                    </RowLink>
+                    <RowLink href={`/platform-admin/tenants/${t.id}`} className="font-medium">
+                      {t.name}
+                    </RowLink>
+                    <RowLink href={`/platform-admin/tenants/${t.id}`}>
                       <span className="rounded-full border px-2 py-0.5 text-xs">
                         {t.plan}
                       </span>
-                    </Td>
-                    <Td>
+                    </RowLink>
+                    <RowLink href={`/platform-admin/tenants/${t.id}`}>
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs ${
                           t.status === 'ACTIVE'
@@ -104,14 +109,19 @@ export default async function PlatformDashboardPage() {
                       >
                         {t.status}
                       </span>
-                    </Td>
-                    <Td className="text-muted-foreground">{t.city ?? '—'}</Td>
-                    <Td className="text-muted-foreground tabular-nums">
+                    </RowLink>
+                    <RowLink href={`/platform-admin/tenants/${t.id}`} className="text-muted-foreground">
+                      {t.city ?? '—'}
+                    </RowLink>
+                    <RowLink
+                      href={`/platform-admin/tenants/${t.id}`}
+                      className="text-muted-foreground tabular-nums"
+                    >
                       {t._count?.users ?? 0}
-                    </Td>
-                    <Td className="text-muted-foreground">
+                    </RowLink>
+                    <RowLink href={`/platform-admin/tenants/${t.id}`} className="text-muted-foreground">
                       {new Date(t.createdAt).toLocaleDateString('es-BO')}
-                    </Td>
+                    </RowLink>
                   </tr>
                 ))}
               </tbody>
@@ -127,6 +137,27 @@ function Th({ children }: { children: React.ReactNode }) {
   return <th className="px-4 py-2 text-left font-medium">{children}</th>;
 }
 
-function Td({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-4 py-3 ${className ?? ''}`}>{children}</td>;
+/**
+ * Celda con link interno. Usar `<a>` envolviendo el contenido para que toda
+ * la celda sea clickeable (mejor UX que solo el texto).
+ */
+function RowLink({
+  href,
+  className,
+  children,
+}: {
+  href: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <td className="p-0">
+      <Link
+        href={href as never}
+        className={`block px-4 py-3 ${className ?? ''}`}
+      >
+        {children}
+      </Link>
+    </td>
+  );
 }

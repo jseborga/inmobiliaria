@@ -2,11 +2,13 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
-import { Prisma, TenantPlan } from '@prisma/client';
+import { Prisma, TenantPlan, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { hashPassword } from '../auth/hash.util';
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { UpdateTenantDto } from './dto/update-tenant.dto';
 
 @Injectable()
 export class PlatformTenantsService {
@@ -14,10 +16,6 @@ export class PlatformTenantsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Onboarding de una inmobiliaria: crea Tenant + usuario OWNER en una transacción.
-   * Slugs duplicados o email duplicado dentro del tenant recién creado → 409.
-   */
   async createTenantWithOwner(dto: CreateTenantDto) {
     const passwordHash = await hashPassword(dto.ownerPassword);
 
@@ -54,14 +52,7 @@ export class PlatformTenantsService {
       );
 
       return {
-        tenant: {
-          id: result.tenant.id,
-          slug: result.tenant.slug,
-          name: result.tenant.name,
-          plan: result.tenant.plan,
-          status: result.tenant.status,
-          createdAt: result.tenant.createdAt,
-        },
+        tenant: this.tenantToDto(result.tenant),
         owner: {
           id: result.owner.id,
           email: result.owner.email,
@@ -103,5 +94,142 @@ export class PlatformTenantsService {
     ]);
 
     return { items, total, take, skip };
+  }
+
+  async getTenantDetail(id: string) {
+    const tenant = await this.prisma.raw.tenant.findUnique({
+      where: { id },
+      include: {
+        users: {
+          orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+            status: true,
+            lastLoginAt: true,
+            createdAt: true,
+          },
+        },
+        _count: { select: { users: true, properties: true, leads: true } },
+      },
+    });
+    if (!tenant) throw new NotFoundException('Tenant no encontrado');
+    return {
+      ...this.tenantToDto(tenant),
+      address: tenant.address,
+      phone: tenant.phone,
+      contactEmail: tenant.email,
+      counts: {
+        users: tenant._count.users,
+        properties: tenant._count.properties,
+        leads: tenant._count.leads,
+      },
+      users: tenant.users,
+    };
+  }
+
+  async updateTenant(id: string, dto: UpdateTenantDto) {
+    await this.assertExists(id);
+    try {
+      const updated = await this.prisma.raw.tenant.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(dto.plan !== undefined ? { plan: dto.plan } : {}),
+          ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
+          ...(dto.contactEmail !== undefined ? { email: dto.contactEmail } : {}),
+          ...(dto.address !== undefined ? { address: dto.address } : {}),
+          ...(dto.city !== undefined ? { city: dto.city } : {}),
+        },
+      });
+      this.logger.log(`Tenant actualizado: ${updated.slug} (${updated.id})`);
+      return this.tenantToDto(updated);
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException('Conflicto al actualizar (campo único duplicado)');
+      }
+      throw err;
+    }
+  }
+
+  async setTenantStatus(id: string, status: TenantStatus) {
+    await this.assertExists(id);
+    const updated = await this.prisma.raw.tenant.update({
+      where: { id },
+      data: { status },
+    });
+    this.logger.log(`Tenant ${updated.slug} → status=${status}`);
+    return this.tenantToDto(updated);
+  }
+
+  /**
+   * Borra el tenant y TODO lo asociado (users, properties, leads, etc.)
+   * por cascade del schema. Operación destructiva irrecuperable —
+   * la confirmación es responsabilidad del cliente.
+   */
+  async deleteTenant(id: string) {
+    await this.assertExists(id);
+    await this.prisma.raw.tenant.delete({ where: { id } });
+    this.logger.warn(`Tenant ${id} eliminado (cascade)`);
+  }
+
+  /**
+   * Resetea el password de un user del tenant. Útil cuando el OWNER
+   * pierde acceso. Se valida que el user pertenezca al tenant indicado
+   * para evitar manipulación cross-tenant.
+   */
+  async resetUserPassword(tenantId: string, userId: string, newPassword: string) {
+    const user = await this.prisma.raw.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, tenantId: true },
+    });
+    if (!user || user.tenantId !== tenantId) {
+      throw new NotFoundException('Usuario no encontrado en este tenant');
+    }
+    const passwordHash = await hashPassword(newPassword);
+    await this.prisma.raw.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+    // Revocamos refresh tokens del user para forzar re-login en otros devices.
+    await this.prisma.raw.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    this.logger.log(`Password reseteada para user ${user.email} (tenant=${tenantId})`);
+    return { ok: true };
+  }
+
+  private async assertExists(id: string) {
+    const found = await this.prisma.raw.tenant.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!found) throw new NotFoundException('Tenant no encontrado');
+  }
+
+  private tenantToDto<
+    T extends {
+      id: string;
+      slug: string;
+      name: string;
+      plan: TenantPlan;
+      status: TenantStatus;
+      city: string | null;
+      createdAt: Date;
+    },
+  >(t: T) {
+    return {
+      id: t.id,
+      slug: t.slug,
+      name: t.name,
+      plan: t.plan,
+      status: t.status,
+      city: t.city,
+      createdAt: t.createdAt,
+    };
   }
 }
