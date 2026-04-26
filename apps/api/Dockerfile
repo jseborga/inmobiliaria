@@ -54,6 +54,14 @@ WORKDIR /repo/apps/api
 RUN pnpm exec prisma generate
 RUN pnpm exec tsc -p tsconfig.json --noEmit false
 
+# Compilar seeds (prisma/seed.ts y prisma/seed-demo.ts) a JS standalone para
+# poder correrlos en el runner sin ts-node (que vive en devDeps).
+RUN pnpm exec tsc \
+    --target es2022 --module commonjs --moduleResolution node \
+    --esModuleInterop --skipLibCheck --resolveJsonModule \
+    --outDir prisma/dist \
+    prisma/seed.ts prisma/seed-demo.ts
+
 # ----------------------------------------------------------------------------
 # Stage: prod-deps — solo deps de producción (sin tsc, eslint, ts-node, etc.)
 # Corre en paralelo con `build` gracias a BuildKit.
@@ -103,11 +111,15 @@ COPY --from=prod-deps --chown=node:node /repo/node_modules ./node_modules
 COPY --from=prod-deps --chown=node:node /repo/packages/shared ./packages/shared
 COPY --from=prod-deps --chown=node:node /repo/apps/api/node_modules ./apps/api/node_modules
 
-# Build artifacts (dist + prisma + workspace files)
+# Build artifacts (dist + prisma + seeds compilados + workspace files)
 COPY --from=build --chown=node:node /repo/apps/api/dist ./apps/api/dist
 COPY --from=build --chown=node:node /repo/apps/api/prisma ./apps/api/prisma
 COPY --from=build --chown=node:node /repo/apps/api/package.json ./apps/api/package.json
 COPY --from=build --chown=node:node /repo/pnpm-workspace.yaml /repo/package.json /repo/pnpm-lock.yaml ./
+
+# Entrypoint: orquesta migrate + trigger PostGIS + seeds opcionales + start.
+COPY --chown=node:node apps/api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Directorio para el mock storage (en prod montar volumen o usar R2).
 RUN mkdir -p /repo/apps/api/storage/uploads \
@@ -118,14 +130,10 @@ USER node
 
 EXPOSE 3001
 
-# Entrypoint: aplica migraciones pendientes (idempotente) y arranca node.
-# `prisma migrate deploy` solo aplica las nuevas y no requiere shadow DB.
-#
-# La ruta `./node_modules/prisma/build/index.js` es relativa al WORKDIR
-# (/repo/apps/api). pnpm con workspaces no hoistea automáticamente
-# `prisma` al node_modules raíz — el symlink vive solo en apps/api/node_modules.
-ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["sh", "-c", "node ./node_modules/prisma/build/index.js migrate deploy --schema=./prisma/schema.prisma && node dist/main.js"]
+# Entrypoint: docker-entrypoint.sh aplica migraciones + trigger PostGIS +
+# seeds opcionales (gated por RUN_SEED_ON_BOOT / RUN_DEMO_SEED_ON_BOOT) y
+# arranca el API. Todo es idempotente — corre seguro en cada boot.
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node -e "require('http').get('http://127.0.0.1:3001/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"

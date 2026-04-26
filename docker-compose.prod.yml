@@ -84,6 +84,14 @@ services:
       R2_SECRET_ACCESS_KEY: "${R2_SECRET_ACCESS_KEY:-}"
       R2_BUCKET: "${R2_BUCKET:-}"
       R2_PUBLIC_URL: "${R2_PUBLIC_URL:-}"
+      # Seeds opcionales en boot (idempotentes):
+      #   RUN_SEED_ON_BOOT=1      → crea super-admin de plataforma.
+      #   RUN_DEMO_SEED_ON_BOOT=1 → crea tenant `demo` + OWNER + 8 propiedades.
+      RUN_SEED_ON_BOOT: "${RUN_SEED_ON_BOOT:-0}"
+      RUN_DEMO_SEED_ON_BOOT: "${RUN_DEMO_SEED_ON_BOOT:-0}"
+      DEMO_TENANT_SLUG: "${DEMO_TENANT_SLUG:-demo}"
+      DEMO_OWNER_EMAIL: "${DEMO_OWNER_EMAIL:-demo@inmobiliaria.test}"
+      DEMO_OWNER_PASSWORD: "${DEMO_OWNER_PASSWORD:-DemoOwner12345!}"
     volumes:
       # Persistir uploads cuando se usa el mock storage (sin R2).
       - api_uploads:/repo/apps/api/storage/uploads
