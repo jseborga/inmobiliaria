@@ -33,6 +33,18 @@ export const PropertyStatus = {
 } as const;
 export type PropertyStatus = (typeof PropertyStatus)[keyof typeof PropertyStatus];
 
+export const TenantPlan = {
+  FREE: 'FREE',
+  PRO: 'PRO',
+} as const;
+export type TenantPlan = (typeof TenantPlan)[keyof typeof TenantPlan];
+
+export const TenantStatus = {
+  ACTIVE: 'ACTIVE',
+  SUSPENDED: 'SUSPENDED',
+} as const;
+export type TenantStatus = (typeof TenantStatus)[keyof typeof TenantStatus];
+
 export const UserRole = {
   OWNER: 'OWNER',
   ADMIN: 'ADMIN',

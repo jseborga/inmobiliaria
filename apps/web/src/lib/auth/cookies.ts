@@ -19,10 +19,13 @@ import 'server-only';
 
 export const SESSION_COOKIE = 'web_session';
 export const ADMIN_REFRESH_COOKIE = 'refresh_token';
+export const PLATFORM_SESSION_COOKIE = 'platform_session';
 export const PLATFORM_REFRESH_COOKIE = 'platform_refresh_token';
 
 /** Path con el que el API setea el refresh token (debe matchear acá). */
 export const REFRESH_COOKIE_PATH = '/api/auth';
+/** Path equivalente para platform-admin (matchea el del API). */
+export const PLATFORM_REFRESH_COOKIE_PATH = '/api/platform-admin/auth';
 
 /**
  * `Secure` solo cuando estamos en prod Y no se pidió override explícito.
@@ -66,6 +69,17 @@ export function refreshCookieOptions(maxAgeSeconds?: number): CookieAttrs {
     secure: useSecureCookies,
     sameSite: 'strict',
     path: REFRESH_COOKIE_PATH,
+    ...(maxAgeSeconds ? { maxAge: maxAgeSeconds } : {}),
+  };
+}
+
+/** Cookie del refresh token de super-admin (path distinto al de tenants). */
+export function platformRefreshCookieOptions(maxAgeSeconds?: number): CookieAttrs {
+  return {
+    httpOnly: true,
+    secure: useSecureCookies,
+    sameSite: 'strict',
+    path: PLATFORM_REFRESH_COOKIE_PATH,
     ...(maxAgeSeconds ? { maxAge: maxAgeSeconds } : {}),
   };
 }
