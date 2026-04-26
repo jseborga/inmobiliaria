@@ -3,17 +3,21 @@
 # Dockerfile multi-stage para apps/api.
 # Build context: raíz del repo (necesita pnpm-workspace + packages/shared).
 #
-#   docker build -f apps/api/Dockerfile -t inmobiliaria-api .
+# Estrategia:
+#   - `deps`     : instala TODAS las deps (build + runtime) — necesario para tsc
+#   - `build`    : prisma generate + tsc (usa `deps`)
+#   - `prod-deps`: instala SOLO deps de producción (paralelo a `build`)
+#   - `runner`   : runtime mínimo. Copia node_modules de `prod-deps` (~250MB
+#                  en lugar de ~1GB) + dist de `build`. Imagen final ~350MB.
 #
-# El runtime preserva la estructura del monorepo (`/repo/apps/api`,
-# `/repo/packages/shared`, `/repo/node_modules`) para que los symlinks
-# de pnpm hacia el workspace sigan resolviendo.
+# Esto reduce drasticamente el tiempo de COPY al runner y el tamaño final
+# de la imagen. BuildKit corre `build` y `prod-deps` en paralelo, así que
+# el wall-clock del primer build no se duplica.
 
 ARG NODE_VERSION=20-alpine
 
 # ----------------------------------------------------------------------------
-# Stage: deps — instala TODO el monorepo (cacheable mientras no cambien
-# pnpm-lock.yaml ni los package.json)
+# Stage: deps — instala TODO (build + dev deps)
 # ----------------------------------------------------------------------------
 FROM node:${NODE_VERSION} AS deps
 RUN apk add --no-cache libc6-compat openssl
@@ -37,21 +41,43 @@ RUN apk add --no-cache libc6-compat openssl
 RUN corepack enable
 
 WORKDIR /repo
-
-# Reusa node_modules del stage anterior.
 COPY --from=deps /repo /repo
 
 COPY packages/config ./packages/config
 COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 
-# prisma generate emite el cliente bajo node_modules/.pnpm/@prisma+client@.../node_modules/.prisma
 WORKDIR /repo/apps/api
 RUN pnpm exec prisma generate
 RUN pnpm exec tsc -p tsconfig.json --noEmit false
 
 # ----------------------------------------------------------------------------
-# Stage: runner — imagen final, conserva la estructura del monorepo
+# Stage: prod-deps — solo deps de producción (sin tsc, eslint, ts-node, etc.)
+# Corre en paralelo con `build` gracias a BuildKit.
+# ----------------------------------------------------------------------------
+FROM node:${NODE_VERSION} AS prod-deps
+RUN apk add --no-cache libc6-compat openssl
+RUN corepack enable
+
+WORKDIR /repo
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+COPY packages/shared/package.json packages/shared/
+COPY packages/config/package.json packages/config/
+
+# Necesitamos el sourcecode de @inmobiliaria/shared (workspace dep)
+# para que el symlink en apps/api/node_modules apunte a algo real.
+COPY packages/shared ./packages/shared
+
+# pnpm install --prod skipea devDependencies → ~250MB en vez de ~1GB.
+# `--filter @inmobiliaria/api...` instala solo lo que el API necesita
+# (con sus deps transitivas) — no instala las deps específicas del web.
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    pnpm install --prod --frozen-lockfile --filter "@inmobiliaria/api..."
+
+# ----------------------------------------------------------------------------
+# Stage: runner — imagen final mínima
 # ----------------------------------------------------------------------------
 FROM node:${NODE_VERSION} AS runner
 RUN apk add --no-cache libc6-compat openssl tini
@@ -60,25 +86,20 @@ RUN corepack enable
 ENV NODE_ENV=production
 WORKDIR /repo
 
-# pnpm hoistea casi todo a /repo/node_modules y deja symlinks relativos en
-# apps/api/node_modules → ../../packages/shared, etc. Para que resuelvan,
-# copiamos los tres a las mismas rutas.
-#
-# Importante: usamos `--chown=node:node` en cada COPY para que el ownership
-# se asigne durante la transferencia. Un `RUN chown -R node:node /repo`
-# posterior procesaba ~100k archivos en serie (de node_modules) y se colgaba
-# 10+ min en disks lentos. `--chown=` lo hace incremental por capa.
-COPY --from=build --chown=node:node /repo/node_modules ./node_modules
-COPY --from=build --chown=node:node /repo/packages/shared ./packages/shared
-COPY --from=build --chown=node:node /repo/apps/api/node_modules ./apps/api/node_modules
+# node_modules sin devDeps (~250MB vs ~1GB).
+COPY --from=prod-deps --chown=node:node /repo/node_modules ./node_modules
+COPY --from=prod-deps --chown=node:node /repo/packages/shared ./packages/shared
+COPY --from=prod-deps --chown=node:node /repo/apps/api/node_modules ./apps/api/node_modules
+
+# Build artifacts (dist + prisma + workspace files)
 COPY --from=build --chown=node:node /repo/apps/api/dist ./apps/api/dist
 COPY --from=build --chown=node:node /repo/apps/api/prisma ./apps/api/prisma
 COPY --from=build --chown=node:node /repo/apps/api/package.json ./apps/api/package.json
 COPY --from=build --chown=node:node /repo/pnpm-workspace.yaml /repo/package.json /repo/pnpm-lock.yaml ./
 
 # Directorio para el mock storage (en prod montar volumen o usar R2).
-# Solo chown de esta carpeta — el resto ya viene con ownership correcto.
-RUN mkdir -p /repo/apps/api/storage/uploads && chown node:node /repo/apps/api/storage /repo/apps/api/storage/uploads
+RUN mkdir -p /repo/apps/api/storage/uploads \
+    && chown node:node /repo/apps/api/storage /repo/apps/api/storage/uploads
 
 WORKDIR /repo/apps/api
 USER node
