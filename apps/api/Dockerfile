@@ -108,8 +108,12 @@ EXPOSE 3001
 
 # Entrypoint: aplica migraciones pendientes (idempotente) y arranca node.
 # `prisma migrate deploy` solo aplica las nuevas y no requiere shadow DB.
+#
+# La ruta `./node_modules/prisma/build/index.js` es relativa al WORKDIR
+# (/repo/apps/api). pnpm con workspaces no hoistea automáticamente
+# `prisma` al node_modules raíz — el symlink vive solo en apps/api/node_modules.
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["sh", "-c", "node ../../node_modules/prisma/build/index.js migrate deploy --schema=./prisma/schema.prisma && node dist/main.js"]
+CMD ["sh", "-c", "node ./node_modules/prisma/build/index.js migrate deploy --schema=./prisma/schema.prisma && node dist/main.js"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node -e "require('http').get('http://127.0.0.1:3001/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
