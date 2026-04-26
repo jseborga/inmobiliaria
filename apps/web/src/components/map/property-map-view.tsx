@@ -29,9 +29,16 @@ interface PropertyMapViewProps {
   crossTenant: boolean;
   /** Activado por ?fit=1&budget=... en URL — pinta markers según ajuste. */
   budget?: { amount: number; currency: Currency } | null;
+  /** Centro inicial sugerido (geo por IP del request). Solo aplica si no hay POI. */
+  defaultCenter?: { lat: number; lng: number } | null;
+  /**
+   * Si true, el componente llena el alto del padre (split view).
+   * Si false (default), usa altura fija de 600px (vista mapa fullwidth).
+   */
+  fillParent?: boolean;
 }
 
-export function PropertyMapView({ properties, crossTenant, budget }: PropertyMapViewProps) {
+export function PropertyMapView({ properties, crossTenant, budget, defaultCenter, fillParent }: PropertyMapViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
@@ -110,7 +117,7 @@ export function PropertyMapView({ properties, crossTenant, budget }: PropertyMap
   const missingCoords = properties.length - propsWithCoords.length;
 
   return (
-    <div className="space-y-3">
+    <div className={fillParent ? 'flex h-full flex-col gap-3' : 'space-y-3'}>
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-3">
         <Button type="button" variant="outline" size="sm" onClick={locateMe} disabled={pending}>
@@ -161,7 +168,13 @@ export function PropertyMapView({ properties, crossTenant, budget }: PropertyMap
       </div>
 
       {/* Mapa */}
-      <div className="h-[600px] overflow-hidden rounded-lg border">
+      <div
+        className={
+          fillParent
+            ? 'min-h-0 flex-1 overflow-hidden rounded-lg border'
+            : 'h-[600px] overflow-hidden rounded-lg border'
+        }
+      >
         <PropertyMapInner
           properties={propsWithCoords}
           crossTenant={crossTenant}
@@ -169,6 +182,7 @@ export function PropertyMapView({ properties, crossTenant, budget }: PropertyMap
           onPickPoi={(lat, lng) => setPickedPoi({ lat, lng })}
           radiusKm={pendingRadius}
           budget={budget ?? null}
+          defaultCenter={defaultCenter ?? null}
         />
       </div>
 

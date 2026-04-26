@@ -13,7 +13,6 @@ import {
 } from 'react-leaflet';
 import { Currency, type PropertyDto, type TenantSummary } from '@inmobiliaria/shared';
 import { applyLeafletIconFix } from './leaflet-icon-fix';
-import { buildTenantUrl } from '@/lib/tenant-shared';
 import {
   budgetFit,
   formatPrice,
@@ -44,6 +43,8 @@ export interface PropertyMapInnerProps {
    * con precio + color verde/amarillo según fit. Si no, marker default azul.
    */
   budget?: { amount: number; currency: Currency } | null;
+  /** Centro inicial sugerido (geo por IP). Solo aplica si no hay POI. */
+  defaultCenter?: { lat: number; lng: number } | null;
 }
 
 /**
@@ -90,15 +91,26 @@ export function PropertyMapInner({
   onPickPoi,
   radiusKm,
   budget,
+  defaultCenter,
 }: PropertyMapInnerProps) {
-  // Centro/zoom inicial: si hay POI usamos eso; sino bounding box de las props;
-  // sino default Bolivia.
+  // Centro/zoom inicial:
+  //   1) POI activo (clic del usuario / "Cerca de mí")
+  //   2) bounding box de las propiedades (FitBounds)
+  //   3) defaultCenter (geo por IP) — zoom ciudad
+  //   4) centroide Bolivia
+  const CITY_ZOOM = 11;
   const initial = useMemo(() => {
     if (poi) return { center: [poi.lat, poi.lng] as [number, number], zoom: NEAR_ZOOM };
     const withCoords = properties.filter(
       (p) => p.latitude != null && p.longitude != null,
     );
     if (withCoords.length === 0) {
+      if (defaultCenter) {
+        return {
+          center: [defaultCenter.lat, defaultCenter.lng] as [number, number],
+          zoom: CITY_ZOOM,
+        };
+      }
       return { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM };
     }
     if (withCoords.length === 1) {
@@ -109,10 +121,10 @@ export function PropertyMapInner({
       };
     }
     return null; // se calcula con FitBounds más abajo
-  }, [poi, properties]);
+  }, [poi, properties, defaultCenter]);
 
-  const center = initial?.center ?? DEFAULT_CENTER;
-  const zoom = initial?.zoom ?? DEFAULT_ZOOM;
+  const center = initial?.center ?? (defaultCenter ? [defaultCenter.lat, defaultCenter.lng] as [number, number] : DEFAULT_CENTER);
+  const zoom = initial?.zoom ?? (defaultCenter ? CITY_ZOOM : DEFAULT_ZOOM);
 
   return (
     <MapContainer
@@ -157,10 +169,13 @@ export function PropertyMapInner({
         const lng = Number(p.longitude);
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
         const detailPath = `/properties/${p.slug}`;
+        // Cross-tenant: agregamos ?tenantSlug= por query (no subdominio) para
+        // funcionar sin wildcard DNS. Mismo tenant: la página resuelve por
+        // middleware desde el host.
         const href =
           crossTenant && p.tenant?.slug
-            ? buildTenantUrl(p.tenant.slug, detailPath)
-            : `${detailPath}?tenantSlug=${p.tenant?.slug ?? ''}`;
+            ? `${detailPath}?tenantSlug=${encodeURIComponent(p.tenant.slug)}`
+            : detailPath;
         const cover = p.images?.[0];
         const icon = buildPriceMarker(p.price, p.currency, budget ?? null);
         return (

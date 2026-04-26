@@ -13,10 +13,11 @@ import {
   type PropertyFiltersValues,
 } from '@/components/properties/property-filters';
 import { Pagination } from '@/components/properties/pagination';
-import { ViewToggle } from '@/components/properties/view-toggle';
+import { ViewToggle, type ViewMode } from '@/components/properties/view-toggle';
 import { PropertyMapView } from '@/components/map/property-map-view';
 import { ApiError } from '@/lib/api';
 import { getPublicApi } from '@/lib/api/public';
+import { getRequestGeo } from '@/lib/geo';
 import { getRequestContext } from '@/lib/tenant';
 
 export const metadata: Metadata = {
@@ -50,33 +51,34 @@ function pickFilters(searchParams: SearchParams): PropertyFiltersValues {
 }
 
 /**
- * En modo mapa subimos `take` para que la vista no quede partida en páginas
- * de 12 markers (que sería raro de UX). Igual está acotado a 100 por la API.
+ * En modo mapa/split subimos `take` para que la vista no quede partida en
+ * páginas de 12 markers (raro de UX). Acotado a 100 por la API.
  */
 const MAP_TAKE = 80;
+const SPLIT_TAKE = 30;
 
-function pickQuery(searchParams: SearchParams, view: 'list' | 'map') {
+function pickQuery(searchParams: SearchParams, view: ViewMode) {
   const q: Record<string, string | number> = {};
   for (const k of FILTER_KEYS) {
     const v = searchParams[k];
     if (typeof v === 'string' && v.length > 0) q[k] = v;
   }
 
-  // Geo filters (sólo aplica modo mapa, vienen de POI/cerca de mí).
+  // Geo filters (aplica en mapa/split, vienen de POI/cerca de mí).
   for (const k of ['nearLat', 'nearLng', 'radiusKm'] as const) {
     const v = searchParams[k];
     if (typeof v === 'string' && v.length > 0) q[k] = v;
   }
 
+  const defaultTake =
+    view === 'map' ? MAP_TAKE : view === 'split' ? SPLIT_TAKE : TAKE_DEFAULT;
   const skip = Number(searchParams.skip ?? 0);
-  const requestedTake = Number(searchParams.take ?? (view === 'map' ? MAP_TAKE : TAKE_DEFAULT));
+  const requestedTake = Number(searchParams.take ?? defaultTake);
   q.skip = Number.isFinite(skip) && skip >= 0 ? skip : 0;
   q.take =
     Number.isFinite(requestedTake) && requestedTake > 0 && requestedTake <= 100
       ? requestedTake
-      : view === 'map'
-        ? MAP_TAKE
-        : TAKE_DEFAULT;
+      : defaultTake;
   return q;
 }
 
@@ -88,7 +90,9 @@ export default async function PropertiesPage({
   const ctx = getRequestContext();
   const tenantSlug = ctx.tenantSlug;
   const isMarketplace = ctx.context === 'marketplace';
-  const view: 'list' | 'map' = searchParams.view === 'map' ? 'map' : 'list';
+  const rawView = searchParams.view;
+  const view: ViewMode =
+    rawView === 'map' ? 'map' : rawView === 'split' ? 'split' : 'list';
 
   // Modo presupuesto: ?fit=1&budget=...&currency=... — activa visualización
   // (markers coloreados + badges en cards). Los filtros normales (maxPrice,
@@ -107,6 +111,10 @@ export default async function PropertiesPage({
   const api = getPublicApi({ tags: ['public-properties'] });
   const filters = pickFilters(searchParams);
   const query = pickQuery(searchParams, view);
+
+  // Geo por IP del request (cacheado 24h). Sirve para centrar el mapa
+  // cuando no hay POI ni properties — fallback al centroide de Bolivia.
+  const geo = view === 'map' || view === 'split' ? await getRequestGeo() : null;
 
   let data: PaginatedResponse<PropertyDto>;
   try {
@@ -194,7 +202,34 @@ export default async function PropertiesPage({
           properties={data.items}
           crossTenant={isMarketplace}
           budget={budget}
+          defaultCenter={geo ? { lat: geo.lat, lng: geo.lng } : null}
         />
+      ) : view === 'split' ? (
+        // En desktop: lista 2 cols a la izquierda + mapa sticky a la derecha.
+        // En mobile: el mapa pasa arriba de la lista (alto reducido).
+        <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
+          <div className="order-2 grid gap-4 sm:grid-cols-2 lg:order-1">
+            {data.items.map((p) => (
+              <PropertyCard
+                key={p.id}
+                property={p}
+                crossTenant={isMarketplace}
+                budget={budget}
+              />
+            ))}
+          </div>
+          <div className="order-1 lg:order-2 lg:sticky lg:top-4 lg:self-start">
+            <div className="h-[60vh] min-h-[360px] lg:h-[calc(100vh-6rem)]">
+              <PropertyMapView
+                properties={data.items}
+                crossTenant={isMarketplace}
+                budget={budget}
+                defaultCenter={geo ? { lat: geo.lat, lng: geo.lng } : null}
+                fillParent
+              />
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {data.items.map((p) => (
@@ -208,7 +243,7 @@ export default async function PropertiesPage({
         </div>
       )}
 
-      {view === 'list' ? (
+      {view === 'list' || view === 'split' ? (
         <Pagination
           total={data.total}
           take={take}

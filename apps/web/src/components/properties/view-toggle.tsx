@@ -2,25 +2,31 @@
 
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { LayoutGrid, Map as MapIcon } from 'lucide-react';
+import { LayoutGrid, Map as MapIcon, Columns2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+export type ViewMode = 'list' | 'split' | 'map';
+
 interface ViewToggleProps {
-  current: 'list' | 'map';
+  current: ViewMode;
 }
 
 /**
- * Toggle Lista | Mapa que conserva los demás searchParams al cambiar de vista
- * (filtros, paginación). Server-rendered URL → no necesita estado JS.
+ * Toggle Lista | Split | Mapa que conserva los demás searchParams al cambiar
+ * de vista (filtros, paginación). Server-rendered URL → no necesita estado JS.
+ *
+ * - `list`  → solo cards en grilla (default).
+ * - `split` → cards a la izquierda + mapa a la derecha (desktop). Mobile cae a list.
+ * - `map`   → solo mapa fullwidth.
  */
 export function ViewToggle({ current }: ViewToggleProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  function buildHref(view: 'list' | 'map'): string {
+  function buildHref(view: ViewMode): string {
     const next = new URLSearchParams(searchParams);
-    if (view === 'map') next.set('view', 'map');
-    else next.delete('view');
+    if (view === 'list') next.delete('view');
+    else next.set('view', view);
     const qs = next.toString();
     return `${pathname}${qs ? `?${qs}` : ''}`;
   }
@@ -33,6 +39,9 @@ export function ViewToggle({ current }: ViewToggleProps) {
     >
       <Tab href={buildHref('list')} active={current === 'list'} icon={<LayoutGrid className="h-4 w-4" />}>
         Lista
+      </Tab>
+      <Tab href={buildHref('split')} active={current === 'split'} icon={<Columns2 className="h-4 w-4" />}>
+        Split
       </Tab>
       <Tab href={buildHref('map')} active={current === 'map'} icon={<MapIcon className="h-4 w-4" />}>
         Mapa

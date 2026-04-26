@@ -3,7 +3,6 @@ import { MapPin, BedDouble, Bath, Ruler } from 'lucide-react';
 import { Currency, type PropertyDto, type TenantSummary } from '@inmobiliaria/shared';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { buildTenantUrl } from '@/lib/tenant-shared';
 import {
   budgetFit,
   budgetFitLabel,
@@ -27,25 +26,21 @@ export function PropertyCard({ property, crossTenant, budget }: PropertyCardProp
   const location = [property.zone, property.city].filter(Boolean).join(', ');
   const tenantSlug = property.tenant?.slug;
   const detailPath = `/properties/${property.slug}`;
+  // Cross-tenant: pasamos tenantSlug por query string (no por subdominio) para
+  // que funcione sin wildcard DNS. La página de detalle sabe leerlo de ahí.
   const href =
     crossTenant && tenantSlug
-      ? buildTenantUrl(tenantSlug, detailPath)
+      ? `${detailPath}?tenantSlug=${encodeURIComponent(tenantSlug)}`
       : detailPath;
 
-  // Cross-tenant navega a otro subdominio → <a>. Mismo tenant → next/link.
   const Wrapper: React.FC<{ children: React.ReactNode; className?: string }> = ({
     children,
     className,
-  }) =>
-    crossTenant && tenantSlug ? (
-      <a href={href} className={className}>
-        {children}
-      </a>
-    ) : (
-      <Link href={detailPath as never} className={className}>
-        {children}
-      </Link>
-    );
+  }) => (
+    <Link href={href as never} className={className}>
+      {children}
+    </Link>
+  );
 
   return (
     <Wrapper className="group block">
