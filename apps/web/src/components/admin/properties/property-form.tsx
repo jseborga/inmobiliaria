@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { LocationPicker } from '@/components/map/location-picker';
+import { AIDescriptionButton } from '@/components/admin/properties/ai-description-button';
 import {
   createProperty,
   updateProperty,
@@ -133,8 +134,17 @@ export function PropertyForm({ property }: PropertyFormProps) {
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="description">Descripción</Label>
-          <Textarea id="description" rows={5} {...register('description')} />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label htmlFor="description">Descripción</Label>
+            <AIDescriptionButton
+              propertyId={property?.id}
+              hasExistingText={!!watch('description')?.trim()}
+              onGenerated={(text) =>
+                setValue('description', text, { shouldDirty: true, shouldValidate: true })
+              }
+            />
+          </div>
+          <Textarea id="description" rows={6} {...register('description')} />
           {errors.description?.message ? (
             <p className="text-xs text-destructive">{errors.description.message}</p>
           ) : null}

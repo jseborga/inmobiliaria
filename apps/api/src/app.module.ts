@@ -8,6 +8,7 @@ import { TenantContextInterceptor } from './common/tenant/tenant-context.interce
 import { TenantResolverMiddleware } from './common/tenant/tenant.middleware';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { AIModule } from './modules/ai/ai.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { LeadsModule } from './modules/leads/leads.module';
@@ -31,6 +32,7 @@ import { PrismaModule } from './prisma/prisma.module';
     StorageModule,
     PropertiesModule,
     LeadsModule,
+    AIModule,
     HealthModule,
   ],
   providers: [
