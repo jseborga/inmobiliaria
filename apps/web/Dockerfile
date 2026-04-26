@@ -27,8 +27,10 @@ COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
 COPY packages/config/package.json packages/config/
 
+# Filtrar al subgrafo del web evita instalar deps pesadas del API (Prisma,
+# AWS SDK, NestJS) que no se usan para `next build`.
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile
+    pnpm install --frozen-lockfile --filter "@inmobiliaria/web..."
 
 # ----------------------------------------------------------------------------
 # Stage: build — next build con output: 'standalone'

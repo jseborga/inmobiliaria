@@ -3,8 +3,22 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.prettierignore'
+      - '.prettierrc'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.prettierignore'
+      - '.prettierrc'
 
 # Cancelamos runs viejos del mismo PR cuando llega un push nuevo —
 # ahorra minutos de runner sin perder el feedback del último commit.

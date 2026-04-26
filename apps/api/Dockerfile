@@ -30,8 +30,11 @@ COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
 COPY packages/config/package.json packages/config/
 
+# `--filter @inmobiliaria/api...` instala solo el subgrafo del API
+# (con devDeps necesarias para tsc/prisma), evitando bajar Next/React/Sentry
+# del web que no se usan en este build.
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile
+    pnpm install --frozen-lockfile --filter "@inmobiliaria/api..."
 
 # ----------------------------------------------------------------------------
 # Stage: build — prisma generate + tsc

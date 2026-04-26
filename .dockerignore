@@ -1,3 +1,4 @@
+# Build outputs
 node_modules
 **/node_modules
 dist
@@ -8,12 +9,45 @@ dist
 **/.turbo
 *.tsbuildinfo
 **/*.tsbuildinfo
+
+# Env (los build-args y runtime envs vienen por compose/CI, no por COPY)
 .env
 **/.env
 .env.local
 **/.env.local
+.env.prod
+**/.env.prod
+
+# VCS / CI
 .git
+.gitignore
+.gitattributes
 .github
-storage/uploads
-coverage
+
+# Docs (no afectan al runtime y rotan seguido → invalidan cache)
+*.md
+**/*.md
+LICENSE
+docs
+
+# Tests / fixtures (no se ejecutan dentro de la imagen)
+**/tests
+**/__tests__
+**/test-results
+**/playwright-report
+**/playwright/.cache
+**/coverage
+**/.nyc_output
+
+# Storage local del mock (vol�menes en runtime)
+**/storage/uploads
+uploads
+tmp
+
+# Editor / OS
+.vscode
+.idea
+*.swp
+*.swo
 .DS_Store
+Thumbs.db
