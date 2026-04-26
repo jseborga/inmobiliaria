@@ -68,11 +68,11 @@ ENV NODE_ENV=production \
 WORKDIR /app
 
 # Standalone embebe server.js + dependencias mínimas resueltas.
-COPY --from=build /repo/apps/web/.next/standalone ./
-COPY --from=build /repo/apps/web/.next/static ./apps/web/.next/static
-COPY --from=build /repo/apps/web/public ./apps/web/public
+# Usamos --chown=node:node en el COPY para evitar un `chown -R` lento.
+COPY --from=build --chown=node:node /repo/apps/web/.next/standalone ./
+COPY --from=build --chown=node:node /repo/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build --chown=node:node /repo/apps/web/public ./apps/web/public
 
-RUN chown -R node:node /app
 USER node
 
 EXPOSE 3000

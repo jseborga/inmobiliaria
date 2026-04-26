@@ -63,16 +63,22 @@ WORKDIR /repo
 # pnpm hoistea casi todo a /repo/node_modules y deja symlinks relativos en
 # apps/api/node_modules → ../../packages/shared, etc. Para que resuelvan,
 # copiamos los tres a las mismas rutas.
-COPY --from=build /repo/node_modules ./node_modules
-COPY --from=build /repo/packages/shared ./packages/shared
-COPY --from=build /repo/apps/api/node_modules ./apps/api/node_modules
-COPY --from=build /repo/apps/api/dist ./apps/api/dist
-COPY --from=build /repo/apps/api/prisma ./apps/api/prisma
-COPY --from=build /repo/apps/api/package.json ./apps/api/package.json
-COPY --from=build /repo/pnpm-workspace.yaml /repo/package.json /repo/pnpm-lock.yaml ./
+#
+# Importante: usamos `--chown=node:node` en cada COPY para que el ownership
+# se asigne durante la transferencia. Un `RUN chown -R node:node /repo`
+# posterior procesaba ~100k archivos en serie (de node_modules) y se colgaba
+# 10+ min en disks lentos. `--chown=` lo hace incremental por capa.
+COPY --from=build --chown=node:node /repo/node_modules ./node_modules
+COPY --from=build --chown=node:node /repo/packages/shared ./packages/shared
+COPY --from=build --chown=node:node /repo/apps/api/node_modules ./apps/api/node_modules
+COPY --from=build --chown=node:node /repo/apps/api/dist ./apps/api/dist
+COPY --from=build --chown=node:node /repo/apps/api/prisma ./apps/api/prisma
+COPY --from=build --chown=node:node /repo/apps/api/package.json ./apps/api/package.json
+COPY --from=build --chown=node:node /repo/pnpm-workspace.yaml /repo/package.json /repo/pnpm-lock.yaml ./
 
 # Directorio para el mock storage (en prod montar volumen o usar R2).
-RUN mkdir -p /repo/apps/api/storage/uploads && chown -R node:node /repo
+# Solo chown de esta carpeta — el resto ya viene con ownership correcto.
+RUN mkdir -p /repo/apps/api/storage/uploads && chown node:node /repo/apps/api/storage /repo/apps/api/storage/uploads
 
 WORKDIR /repo/apps/api
 USER node
