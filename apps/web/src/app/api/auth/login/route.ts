@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const apiRes = await fetch(`${env.apiUrl}/auth/login`, {
+  const apiRes = await fetch(`${env.internalApiUrl}/auth/login`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

@@ -26,7 +26,7 @@ export async function POST() {
     return NextResponse.json({ message: 'No hay sesión' }, { status: 401 });
   }
 
-  const apiRes = await fetch(`${env.apiUrl}/auth/refresh`, {
+  const apiRes = await fetch(`${env.internalApiUrl}/auth/refresh`, {
     method: 'POST',
     headers: {
       Accept: 'application/json',

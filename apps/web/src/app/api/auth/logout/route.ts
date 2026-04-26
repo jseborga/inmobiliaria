@@ -17,7 +17,7 @@ export async function POST() {
 
   if (refreshToken) {
     // Best-effort: si el API falla, igual limpiamos cookies del web.
-    await fetch(`${env.apiUrl}/auth/logout`, {
+    await fetch(`${env.internalApiUrl}/auth/logout`, {
       method: 'POST',
       headers: { Cookie: `${ADMIN_REFRESH_COOKIE}=${refreshToken}` },
     }).catch(() => undefined);

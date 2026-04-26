@@ -27,7 +27,7 @@ export function getPublicApi(opts: PublicApiOptions = {}): ApiClient {
   const tenantSlug = opts.tenantSlug ?? ctx.tenantSlug ?? null;
 
   return createApiClient({
-    baseUrl: env.apiUrl,
+    baseUrl: env.internalApiUrl,
     tenantSlug,
     cache: opts.cache ?? 'no-store',
     tags: opts.tags,

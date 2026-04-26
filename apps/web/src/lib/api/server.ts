@@ -48,7 +48,7 @@ export function getServerApi(opts: ServerApiOptions = {}): ApiClient {
     : null;
 
   return createApiClient({
-    baseUrl: env.apiUrl,
+    baseUrl: env.internalApiUrl,
     accessToken,
     tenantSlug,
     cookieHeader,

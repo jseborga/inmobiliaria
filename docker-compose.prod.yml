@@ -113,6 +113,9 @@ services:
       PORT: "3000"
       NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL}"
       NEXT_PUBLIC_ROOT_DOMAIN: "${NEXT_PUBLIC_ROOT_DOMAIN}"
+      # Server-side fetch del web → API por la red interna del compose.
+      # Si querés overridear (ej. otra red), exportá INTERNAL_API_URL.
+      INTERNAL_API_URL: "${INTERNAL_API_URL:-http://api:3001/api}"
       WEB_SESSION_SECRET: "${WEB_SESSION_SECRET:?WEB_SESSION_SECRET requerido}"
     ports:
       - "${WEB_PORT:-3000}:3000"
