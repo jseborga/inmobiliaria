@@ -1,14 +1,19 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Building2, ChevronLeft, FileText, Users } from 'lucide-react';
+import { Building2, ChevronLeft, FileText, Sparkles, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EditTenantForm } from '@/components/platform-admin/edit-tenant-form';
 import { ResetPasswordButton } from '@/components/platform-admin/reset-password-button';
 import { TenantActions } from '@/components/platform-admin/tenant-actions';
+import { TenantAISection } from '@/components/platform-admin/tenant-ai-section';
 import { ApiError } from '@/lib/api';
 import { getPlatformApi } from '@/lib/api/platform';
 import { requirePlatformAdmin } from '@/lib/auth/platform-session';
+import {
+  getPlatformTenantAISettings,
+  getPlatformTenantAIUsage,
+} from '@/lib/actions/ai-settings';
 import type { TenantDetail } from '@inmobiliaria/shared';
 
 export const metadata: Metadata = {
@@ -30,6 +35,12 @@ export default async function TenantDetailPage({ params }: PageProps) {
     if (err instanceof ApiError && err.status === 404) notFound();
     throw err;
   }
+
+  // Config IA + uso del mes (carga independiente del tenant detail).
+  const [aiSettings, aiUsage] = await Promise.all([
+    getPlatformTenantAISettings(params.id).catch(() => null),
+    getPlatformTenantAIUsage(params.id),
+  ]);
 
   return (
     <main className="container mx-auto max-w-5xl space-y-6 px-6 py-10">
@@ -89,6 +100,20 @@ export default async function TenantDetailPage({ params }: PageProps) {
           <EditTenantForm tenant={tenant} />
         </CardContent>
       </Card>
+
+      {aiSettings ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Plan IA
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TenantAISection tenantId={tenant.id} settings={aiSettings} usage={aiUsage} />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

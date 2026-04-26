@@ -90,6 +90,22 @@ enum LeadActivityKind {
   CREATED
 }
 
+/// Modo de IA por inmobiliaria.
+/// - DISABLED: el plan no incluye IA (default plan FREE).
+/// - PLATFORM: usa las keys del super-admin global. Se contabiliza para billing.
+/// - OWN:      la inmobiliaria carga sus propias keys, no se cobra.
+enum TenantAIMode {
+  DISABLED
+  PLATFORM
+  OWN
+}
+
+enum AIFeature {
+  DESCRIPTION
+  CHATBOT
+  EMBEDDINGS
+}
+
 /// Empresa inmobiliaria (tenant).
 model Tenant {
   id        String       @id @default(cuid())
@@ -111,6 +127,8 @@ model Tenant {
   propertyImages PropertyImage[]
   leads          Lead[]
   leadActivities LeadActivity[]
+  aiSettings     TenantAISettings?
+  aiUsage        AIUsage[]
 
   @@map("tenants")
 }
@@ -326,4 +344,68 @@ model LeadActivity {
   @@index([leadId, createdAt])
   @@index([tenantId])
   @@map("lead_activities")
+}
+
+/// Configuración global de IA (singleton). Solo el super-admin puede editar.
+/// Las keys quedan encriptadas en DB con AES-256-GCM (master en env AI_KEYS_SECRET).
+model PlatformAISettings {
+  id              String   @id @default("singleton")
+  defaultProvider String?  @map("default_provider")
+  defaultModel    String?  @map("default_model")
+  /// Keys master usadas por tenants con aiMode=PLATFORM. Encriptadas.
+  claudeKeyEnc       String? @map("claude_key_enc")
+  openaiKeyEnc       String? @map("openai_key_enc")
+  openrouterKeyEnc   String? @map("openrouter_key_enc")
+  /// Embeddings (RAG). Default openai/text-embedding-3-small.
+  embeddingsProvider String? @map("embeddings_provider")
+  embeddingsModel    String? @map("embeddings_model")
+  embeddingsKeyEnc   String? @map("embeddings_key_enc")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_ai_settings")
+}
+
+/// Configuración de IA por inmobiliaria.
+/// 1:1 con Tenant. Si no existe, el resolver asume defaults según el plan
+/// (FREE → DISABLED, PRO → PLATFORM).
+model TenantAISettings {
+  tenantId           String       @id @map("tenant_id")
+  mode               TenantAIMode @default(DISABLED)
+  /// Override del provider/modelo. Null usa el default del PlatformAISettings.
+  provider           String?
+  model              String?
+  /// Keys propias del tenant (solo cuando mode=OWN). Encriptadas.
+  claudeKeyEnc       String?      @map("claude_key_enc")
+  openaiKeyEnc       String?      @map("openai_key_enc")
+  openrouterKeyEnc   String?      @map("openrouter_key_enc")
+  /// Cuota mensual (solo aplica a mode=PLATFORM para billing). Null = sin tope.
+  monthlyTokenLimit  Int?         @map("monthly_token_limit")
+  monthlyTokenUsed   Int          @default(0) @map("monthly_token_used")
+  monthlyResetAt     DateTime     @default(now()) @map("monthly_reset_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+
+  tenant             Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_ai_settings")
+}
+
+/// Log de cada llamada a IA. Sirve para reportes de uso y billing.
+model AIUsage {
+  id           String    @id @default(cuid())
+  tenantId     String    @map("tenant_id")
+  feature      AIFeature
+  provider     String
+  model        String
+  inputTokens  Int       @default(0) @map("input_tokens")
+  outputTokens Int       @default(0) @map("output_tokens")
+  /// Si la key vino del super-admin (mode=PLATFORM) → true. Si fue del tenant → false.
+  /// Solo las "billable=true" se cuentan para el cobro mensual.
+  billable     Boolean   @default(false)
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, billable, createdAt])
+  @@map("ai_usage")
 }

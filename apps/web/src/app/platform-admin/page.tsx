@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Plus } from 'lucide-react';
+import { Plus, Sparkles } from 'lucide-react';
 import type { PaginatedResponse, TenantListItem } from '@inmobiliaria/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -39,6 +39,12 @@ export default async function PlatformDashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <Link href={'/platform-admin/ai-settings' as never}>
+              <Sparkles className="mr-2 h-4 w-4" />
+              IA
+            </Link>
+          </Button>
           <Button asChild>
             <Link href={'/platform-admin/tenants/new' as never}>
               <Plus className="mr-2 h-4 w-4" />

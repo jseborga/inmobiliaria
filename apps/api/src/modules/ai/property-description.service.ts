@@ -91,6 +91,8 @@ export class PropertyDescriptionService {
     ].join('\n');
 
     const result = await this.ai.generate(
+      tenantId,
+      'DESCRIPTION',
       { system, user, maxTokens: Math.ceil(approxWords * 4), temperature: 0.7 },
       { provider: opts.provider, model: opts.model },
     );

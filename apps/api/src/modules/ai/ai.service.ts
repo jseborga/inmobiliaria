@@ -1,9 +1,11 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Injectable, Logger } from '@nestjs/common';
+import type { AIFeature } from '@prisma/client';
 import { ClaudeProvider } from './providers/claude.provider';
 import { MockAIProvider } from './providers/mock.provider';
 import { OpenAICompatibleProvider } from './providers/openai-compatible.provider';
 import type { AIGenerateInput, AIGenerateResult, AIProvider } from './providers/types';
+import { AISettingsService } from './ai-settings.service';
+import { AIUsageService } from './ai-usage.service';
 
 export type AIProviderName = 'claude' | 'openai' | 'openrouter' | 'mock';
 
@@ -14,118 +16,102 @@ const DEFAULT_MODELS: Record<AIProviderName, string> = {
   mock: 'mock-determ-v1',
 };
 
+const OPENROUTER_EXTRA_HEADERS: Record<string, string> = {
+  'HTTP-Referer': process.env.WEB_PUBLIC_URL ?? 'https://inmobiliaria.local',
+  'X-Title': 'Inmobiliaria',
+};
+
 /**
- * Orquesta los providers de LLM. Lee la configuración por env vars:
+ * Orquesta llamadas a LLM. Resuelve el provider+key en runtime via
+ * AISettingsService según el modo del tenant (DISABLED/PLATFORM/OWN).
  *
- *   AI_PROVIDER       claude | openai | openrouter | mock   (default: mock si no hay key)
- *   AI_MODEL          override del modelo default del provider
- *   ANTHROPIC_API_KEY  para Claude
- *   OPENAI_API_KEY     para OpenAI
- *   OPENROUTER_API_KEY para OpenRouter
- *
- * Si AI_PROVIDER no está y NO hay ninguna key, default a `mock` para no romper
- * deploys sin IA configurada. Útil en CI / staging.
+ * Cada provider se construye on-the-fly por request — no hay singleton de
+ * keys porque cambian según el tenant. El mock provider es el único que
+ * persiste como instancia (es estático, no necesita key).
  */
 @Injectable()
 export class AIService {
   private readonly logger = new Logger(AIService.name);
-  private readonly defaultProviderName: AIProviderName;
-  private readonly defaultModel: string | undefined;
-  private readonly providers = new Map<AIProviderName, AIProvider>();
+  private readonly mock = new MockAIProvider();
 
   constructor(
-    @Optional() @Inject(ConfigService) private readonly config?: ConfigService,
-  ) {
-    const requested = (this.config?.get<string>('AI_PROVIDER') ?? '')
-      .trim()
-      .toLowerCase() as AIProviderName | '';
+    private readonly settings: AISettingsService,
+    private readonly usage: AIUsageService,
+  ) {}
 
-    this.providers.set('mock', new MockAIProvider());
+  /**
+   * Genera texto en nombre de un tenant.
+   *
+   * @param tenantId   Owner del request — define qué key/modo usar.
+   * @param feature    Para qué se está usando (description, chatbot, embeddings).
+   *                   Se persiste en AIUsage.
+   * @param input      Prompt + parámetros de generación.
+   * @param overrides  Override opcional de provider/modelo (request-level).
+   *                   Si no se pasa, usa lo configurado en el tenant/platform.
+   */
+  async generate(
+    tenantId: string,
+    feature: AIFeature,
+    input: AIGenerateInput,
+    overrides: { provider?: AIProviderName; model?: string } = {},
+  ): Promise<AIGenerateResult> {
+    const resolved = await this.settings.resolveForTenant(tenantId);
 
-    const claudeKey = this.config?.get<string>('ANTHROPIC_API_KEY');
-    if (claudeKey) {
-      this.providers.set('claude', new ClaudeProvider(claudeKey));
+    const provider = overrides.provider ?? resolved.provider;
+    const model = overrides.model ?? resolved.model ?? DEFAULT_MODELS[provider];
+
+    const instance = this.buildProvider(provider, resolved.apiKey);
+    const result = await instance.generate(input, model);
+
+    // Log usage (no bloquea si falla)
+    void this.usage.record({
+      tenantId,
+      feature,
+      provider: result.provider,
+      model: result.model,
+      inputTokens: result.usage?.inputTokens,
+      outputTokens: result.usage?.outputTokens,
+      billable: resolved.billable,
+    });
+
+    return result;
+  }
+
+  // -------------------------------------------------------------------------
+  // Helpers
+  // -------------------------------------------------------------------------
+
+  private buildProvider(name: AIProviderName, apiKey: string | null): AIProvider {
+    if (name === 'mock') return this.mock;
+    if (!apiKey) {
+      this.logger.warn(
+        `Provider ${name} sin API key resuelta — fallback a mock para no romper la request`,
+      );
+      return this.mock;
     }
-
-    const openaiKey = this.config?.get<string>('OPENAI_API_KEY');
-    if (openaiKey) {
-      this.providers.set(
-        'openai',
-        new OpenAICompatibleProvider({
+    switch (name) {
+      case 'claude':
+        return new ClaudeProvider(apiKey);
+      case 'openai':
+        return new OpenAICompatibleProvider({
           name: 'openai',
           endpoint: 'https://api.openai.com/v1/chat/completions',
-          apiKey: openaiKey,
+          apiKey,
           defaultModel: DEFAULT_MODELS.openai,
-        }),
-      );
-    }
-
-    const openrouterKey = this.config?.get<string>('OPENROUTER_API_KEY');
-    if (openrouterKey) {
-      this.providers.set(
-        'openrouter',
-        new OpenAICompatibleProvider({
+        });
+      case 'openrouter':
+        return new OpenAICompatibleProvider({
           name: 'openrouter',
           endpoint: 'https://openrouter.ai/api/v1/chat/completions',
-          apiKey: openrouterKey,
+          apiKey,
           defaultModel: DEFAULT_MODELS.openrouter,
-          extraHeaders: {
-            // OpenRouter recomienda estos headers para identificar la app:
-            'HTTP-Referer': this.config?.get<string>('WEB_PUBLIC_URL') ?? 'https://inmobiliaria.local',
-            'X-Title': 'Inmobiliaria',
-          },
-        }),
-      );
+          extraHeaders: OPENROUTER_EXTRA_HEADERS,
+        });
     }
-
-    // Default provider: el solicitado por env, si está disponible. Sino el
-    // primero disponible que no sea mock. Sino mock.
-    if (requested && this.providers.has(requested as AIProviderName)) {
-      this.defaultProviderName = requested as AIProviderName;
-    } else if (this.providers.has('claude')) {
-      this.defaultProviderName = 'claude';
-    } else if (this.providers.has('openai')) {
-      this.defaultProviderName = 'openai';
-    } else if (this.providers.has('openrouter')) {
-      this.defaultProviderName = 'openrouter';
-    } else {
-      this.defaultProviderName = 'mock';
-    }
-
-    const modelOverride = this.config?.get<string>('AI_MODEL');
-    this.defaultModel = modelOverride && modelOverride.trim().length > 0
-      ? modelOverride.trim()
-      : undefined;
-
-    this.logger.log(
-      `AIService listo — provider=${this.defaultProviderName}` +
-        (this.defaultModel ? ` model=${this.defaultModel}` : '') +
-        ` | disponibles: ${[...this.providers.keys()].join(', ')}`,
-    );
   }
 
-  /** Lista de providers cargados (para diagnóstico / panel de config). */
-  availableProviders(): AIProviderName[] {
-    return [...this.providers.keys()];
-  }
-
-  defaultProvider(): AIProviderName {
-    return this.defaultProviderName;
-  }
-
-  async generate(
-    input: AIGenerateInput,
-    opts: { provider?: AIProviderName; model?: string } = {},
-  ): Promise<AIGenerateResult> {
-    const providerName = opts.provider ?? this.defaultProviderName;
-    const provider = this.providers.get(providerName);
-    if (!provider) {
-      this.logger.warn(
-        `Provider '${providerName}' no disponible, fallback a mock. Configurá la API key correspondiente.`,
-      );
-      return this.providers.get('mock')!.generate(input, opts.model);
-    }
-    const model = opts.model ?? this.defaultModel;
-    return provider.generate(input, model);
+  /** Útil para diagnóstico (panel super-admin). */
+  defaultModelFor(provider: AIProviderName): string {
+    return DEFAULT_MODELS[provider];
   }
 }

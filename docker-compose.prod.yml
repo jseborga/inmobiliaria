@@ -88,12 +88,10 @@ services:
       # a la que el browser hace PUT para subir imágenes. Sin esto, el mock
       # devuelve URLs `localhost:3001` que el browser nunca alcanza.
       API_PUBLIC_URL: "${API_PUBLIC_URL:-${NEXT_PUBLIC_API_URL}}"
-      # IA — vacío usa mock provider (sin costo, respuestas determinísticas).
+      # IA — la config real se gestiona desde /platform-admin/ai-settings.
+      # AI_KEYS_SECRET es OBLIGATORIO en prod (encripta las API keys en DB).
+      AI_KEYS_SECRET: "${AI_KEYS_SECRET:?AI_KEYS_SECRET requerido (openssl rand -base64 32)}"
       AI_PROVIDER: "${AI_PROVIDER:-mock}"
-      AI_MODEL: "${AI_MODEL:-}"
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
-      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
-      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       # Seeds opcionales en boot (idempotentes):
       #   RUN_SEED_ON_BOOT=1      → crea super-admin de plataforma.
       #   RUN_DEMO_SEED_ON_BOOT=1 → crea tenant `demo` + OWNER + 8 propiedades.
