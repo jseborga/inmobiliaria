@@ -5,6 +5,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUrl,
   Matches,
   Max,
   MaxLength,
@@ -123,4 +124,14 @@ export class UpdatePropertyDto {
   @Min(-180)
   @Max(180)
   longitude?: number;
+
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  @MaxLength(500)
+  videoUrl?: string;
+
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  @MaxLength(500)
+  tour360Url?: string;
 }

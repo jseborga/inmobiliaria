@@ -223,6 +223,10 @@ model Property {
   longitude     Decimal?                               @db.Decimal(10, 7)
   /// PostGIS geography(Point, 4326). Mantenida sincronizada con lat/lng vía SQL.
   location      Unsupported("geography(Point, 4326)")?
+  /// URL externa de video (YouTube, Vimeo, etc.). Embed-friendly.
+  videoUrl      String?                                @map("video_url")
+  /// URL externa de tour 360 (Matterport, Kuula, etc.).
+  tour360Url    String?                                @map("tour_360_url")
   createdById   String?                                @map("created_by_id")
   publishedAt   DateTime?                              @map("published_at")
   archivedAt    DateTime?                              @map("archived_at")

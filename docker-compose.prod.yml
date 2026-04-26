@@ -84,6 +84,10 @@ services:
       R2_SECRET_ACCESS_KEY: "${R2_SECRET_ACCESS_KEY:-}"
       R2_BUCKET: "${R2_BUCKET:-}"
       R2_PUBLIC_URL: "${R2_PUBLIC_URL:-}"
+      # URL pública del API. CRÍTICO si usás mock storage (sin R2): es la URL
+      # a la que el browser hace PUT para subir imágenes. Sin esto, el mock
+      # devuelve URLs `localhost:3001` que el browser nunca alcanza.
+      API_PUBLIC_URL: "${API_PUBLIC_URL:-${NEXT_PUBLIC_API_URL}}"
       # Seeds opcionales en boot (idempotentes):
       #   RUN_SEED_ON_BOOT=1      → crea super-admin de plataforma.
       #   RUN_DEMO_SEED_ON_BOOT=1 → crea tenant `demo` + OWNER + 8 propiedades.

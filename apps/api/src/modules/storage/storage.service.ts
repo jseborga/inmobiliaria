@@ -62,9 +62,19 @@ export class StorageService {
       this.logger.warn('StorageService en modo mock (R2 no configurado)');
     }
 
-    const port = this.config?.get<number>('PORT', 3001) ?? 3001;
-    const prefix = this.config?.get<string>('API_PREFIX', 'api') ?? 'api';
-    this.mockBaseUrl = `http://localhost:${port}/${prefix}`;
+    // En dev sin config, fallback a localhost:PORT/PREFIX. En producción ese
+    // fallback es inservible: las URLs presigned se devuelven al browser, que
+    // no puede alcanzar el container del API en `localhost`. Se sobrescribe con
+    // API_PUBLIC_URL (ej. https://api.tu-dominio.com/api).
+    const explicit = this.config?.get<string>('API_PUBLIC_URL');
+    if (explicit && explicit.trim().length > 0) {
+      this.mockBaseUrl = explicit.replace(/\/$/, '');
+    } else {
+      const port = this.config?.get<number>('PORT', 3001) ?? 3001;
+      const prefix = this.config?.get<string>('API_PREFIX', 'api') ?? 'api';
+      this.mockBaseUrl = `http://localhost:${port}/${prefix}`;
+    }
+    this.logger.log(`Mock storage URL base: ${this.mockBaseUrl}`);
   }
 
   isMock(): boolean {

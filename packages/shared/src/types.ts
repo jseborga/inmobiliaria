@@ -56,6 +56,10 @@ export interface PropertyDto {
   address?: string | null;
   latitude?: string | null;
   longitude?: string | null;
+  /** URL externa de video (YouTube, Vimeo, etc.). */
+  videoUrl?: string | null;
+  /** URL externa de tour 360 (Matterport, Kuula, etc.). */
+  tour360Url?: string | null;
   publishedAt?: string | null;
   archivedAt?: string | null;
   createdAt: string;

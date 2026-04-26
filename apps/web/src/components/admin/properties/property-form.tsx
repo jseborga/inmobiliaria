@@ -72,6 +72,8 @@ export function PropertyForm({ property }: PropertyFormProps) {
           address: property.address ?? '',
           latitude: property.latitude != null ? Number(property.latitude) : undefined,
           longitude: property.longitude != null ? Number(property.longitude) : undefined,
+          videoUrl: property.videoUrl ?? '',
+          tour360Url: property.tour360Url ?? '',
         }
       : {
           operation: PropertyOperation.SALE,
@@ -268,6 +270,27 @@ export function PropertyForm({ property }: PropertyFormProps) {
             error={errors.longitude?.message}
           />
         </div>
+      </Section>
+
+      <Section title="Multimedia (videos y tour 360)">
+        <p className="text-xs text-muted-foreground">
+          Pegá links públicos. Aceptamos YouTube, Vimeo, Matterport, Kuula y similares.
+          El video y el tour aparecen en la vista pública de la propiedad.
+        </p>
+        <Field
+          label="Video (YouTube, Vimeo)"
+          name="videoUrl"
+          placeholder="https://www.youtube.com/watch?v=..."
+          register={register}
+          error={errors.videoUrl?.message}
+        />
+        <Field
+          label="Tour 360 (Matterport, Kuula)"
+          name="tour360Url"
+          placeholder="https://my.matterport.com/show/?m=..."
+          register={register}
+          error={errors.tour360Url?.message}
+        />
       </Section>
 
       <div className="flex justify-end gap-2">

@@ -67,6 +67,8 @@ export class PropertiesService {
           address: dto.address ?? null,
           latitude: dto.latitude !== undefined ? new Prisma.Decimal(dto.latitude) : null,
           longitude: dto.longitude !== undefined ? new Prisma.Decimal(dto.longitude) : null,
+          videoUrl: dto.videoUrl ?? null,
+          tour360Url: dto.tour360Url ?? null,
           createdById: userId,
           publishedAt: status === PropertyStatusEnum.PUBLISHED ? now : null,
           archivedAt: status === PropertyStatusEnum.ARCHIVED ? now : null,
@@ -126,6 +128,8 @@ export class PropertiesService {
       ...(dto.longitude !== undefined
         ? { longitude: dto.longitude === null ? null : new Prisma.Decimal(dto.longitude) }
         : {}),
+      ...(dto.videoUrl !== undefined ? { videoUrl: dto.videoUrl || null } : {}),
+      ...(dto.tour360Url !== undefined ? { tour360Url: dto.tour360Url || null } : {}),
       publishedAt,
       archivedAt,
     };

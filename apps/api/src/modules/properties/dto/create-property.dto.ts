@@ -5,6 +5,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUrl,
   Matches,
   Max,
   MaxLength,
@@ -116,4 +117,16 @@ export class CreatePropertyDto {
   @Min(-180)
   @Max(180)
   longitude?: number;
+
+  /** URL del video (YouTube, Vimeo, etc.) — link público. */
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  @MaxLength(500)
+  videoUrl?: string;
+
+  /** URL del tour 360 (Matterport, Kuula, etc.) — link público. */
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  @MaxLength(500)
+  tour360Url?: string;
 }

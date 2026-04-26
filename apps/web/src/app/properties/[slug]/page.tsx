@@ -6,6 +6,7 @@ import type { PropertyDto, TenantSummary } from '@inmobiliaria/shared';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ImageGallery } from '@/components/properties/image-gallery';
+import { MediaViewer } from '@/components/properties/media-viewer';
 import { LeadForm } from '@/components/leads/lead-form';
 import { ApiError } from '@/lib/api';
 import { getPublicApi } from '@/lib/api/public';
@@ -144,6 +145,8 @@ export default async function PropertyDetailPage({
               </p>
             </section>
           ) : null}
+
+          <MediaViewer videoUrl={property.videoUrl} tour360Url={property.tour360Url} />
         </div>
 
         <aside className="space-y-6">

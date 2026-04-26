@@ -34,6 +34,17 @@ export const propertyCreateSchema = z.object({
   address: z.string().max(250).optional().nullable(),
   latitude: z.coerce.number().min(-90).max(90).optional().nullable(),
   longitude: z.coerce.number().min(-180).max(180).optional().nullable(),
+  // Acepta string vacío como "no definido" (limpieza desde el form admin) y
+  // valida URL si trae contenido. La transformación a undefined se hace en el
+  // caller (sanitize()) antes de mandar al API.
+  videoUrl: z
+    .union([z.literal(''), z.string().url('URL inválida').max(500)])
+    .optional()
+    .nullable(),
+  tour360Url: z
+    .union([z.literal(''), z.string().url('URL inválida').max(500)])
+    .optional()
+    .nullable(),
 });
 export type PropertyCreateInput = z.infer<typeof propertyCreateSchema>;
 
