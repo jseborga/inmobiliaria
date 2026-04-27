@@ -26,12 +26,15 @@
 
 services:
   postgres:
-    # Imagen con PostGIS 3.4 + pgvector 0.7+. Necesario para:
+    # Imagen custom: PostGIS oficial + pgvector instalado vía apt.
+    # Dockerfile en infra/postgres.Dockerfile. Necesitamos:
     #  - PostGIS (búsqueda geoespacial de propiedades).
     #  - pgvector (RAG semántico — embeddings de propiedades).
-    # Si preferís otra imagen, asegurate que tenga ambas extensiones; sino
-    # la migración 3_pgvector va a fallar al hacer CREATE EXTENSION vector.
-    image: imresamu/postgis-pgvector:16-3.4-alpine
+    # En Easypanel: configurar el servicio Postgres como "Dockerfile" apuntando
+    # a infra/postgres.Dockerfile (build context = raíz del repo).
+    build:
+      context: .
+      dockerfile: infra/postgres.Dockerfile
     restart: unless-stopped
     environment:
       POSTGRES_DB: "${POSTGRES_DB:-inmobiliaria}"
