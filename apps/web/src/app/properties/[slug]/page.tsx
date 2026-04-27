@@ -9,6 +9,7 @@ import { ImageGallery } from '@/components/properties/image-gallery';
 import { MediaViewer } from '@/components/properties/media-viewer';
 import { PropertyDetailMap } from '@/components/map/property-detail-map';
 import { VisitBookingModal } from '@/components/properties/visit-booking-modal';
+import { ChatWidget } from '@/components/chat/chat-widget';
 import { LeadForm } from '@/components/leads/lead-form';
 import { ApiError } from '@/lib/api';
 import { getPublicApi } from '@/lib/api/public';
@@ -218,6 +219,8 @@ export default async function PropertyDetailPage({
           ) : null}
         </aside>
       </div>
+
+      <ChatWidget tenantSlug={tenantSlug} tenantName={tenant?.name} />
     </main>
   );
 }

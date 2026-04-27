@@ -15,6 +15,7 @@ import {
 import { Pagination } from '@/components/properties/pagination';
 import { ViewToggle, type ViewMode } from '@/components/properties/view-toggle';
 import { PropertyMapView } from '@/components/map/property-map-view';
+import { ChatWidget } from '@/components/chat/chat-widget';
 import { ApiError } from '@/lib/api';
 import { getPublicApi } from '@/lib/api/public';
 import { getRequestGeo } from '@/lib/geo';
@@ -251,6 +252,8 @@ export default async function PropertiesPage({
           searchParams={searchParams}
         />
       ) : null}
+
+      {tenantSlug ? <ChatWidget tenantSlug={tenantSlug} /> : null}
     </main>
   );
 }
