@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { decryptKey, encryptKey, maskKey } from '../../common/crypto/key-cipher';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -28,6 +29,11 @@ export interface WhatsappIntegrationView {
   hasApiKey: boolean;
   testMode: boolean;
   enabled: boolean;
+  botEnabled: boolean;
+  /** URL pública del webhook que la inmobiliaria configura en Evolution. */
+  webhookUrl: string | null;
+  /** Secret aleatorio del webhook (visible al admin para configurarlo). */
+  webhookSecret: string | null;
   cipherReady: boolean;
   updatedAt: string | null;
 }
@@ -39,6 +45,9 @@ export interface UpdateWhatsappIntegration {
   apiKey?: string | null;
   testMode?: boolean;
   enabled?: boolean;
+  botEnabled?: boolean;
+  /** Si true, regenera el webhookSecret. Útil cuando se sospecha leak. */
+  rotateWebhookSecret?: boolean;
 }
 
 /**
@@ -82,12 +91,22 @@ export class WhatsappService {
     const tenant = await this.prisma.raw.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) throw new NotFoundException('Tenant no encontrado');
 
+    const existing = await this.prisma.raw.whatsappIntegration.findUnique({
+      where: { tenantId },
+    });
+
     const data: Record<string, unknown> = { tenantId };
     if (input.baseUrl !== undefined) data.baseUrl = input.baseUrl?.trim() || null;
     if (input.instance !== undefined) data.instance = input.instance?.trim() || null;
     if (input.testMode !== undefined) data.testMode = input.testMode;
     if (input.enabled !== undefined) data.enabled = input.enabled;
+    if (input.botEnabled !== undefined) data.botEnabled = input.botEnabled;
     if (input.apiKey !== undefined) data.apiKeyEnc = encryptKey(input.apiKey);
+
+    // Generar webhookSecret si no existe o si pidieron rotarlo.
+    if (!existing?.webhookSecret || input.rotateWebhookSecret) {
+      data.webhookSecret = randomBytes(24).toString('base64url');
+    }
 
     await this.prisma.raw.whatsappIntegration.upsert({
       where: { tenantId },
@@ -182,6 +201,8 @@ export class WhatsappService {
           apiKeyEnc: string | null;
           testMode: boolean;
           enabled: boolean;
+          botEnabled: boolean;
+          webhookSecret: string | null;
           updatedAt: Date;
         }
       | null,
@@ -194,6 +215,12 @@ export class WhatsappService {
         masked = '•••• (cipher inválido)';
       }
     }
+    // Construye la URL pública del webhook leyendo el slug del tenant.
+    // No la persistimos para que cambios de dominio no obliguen a re-guardar.
+    const apiPublicUrl = process.env.API_PUBLIC_URL?.replace(/\/$/, '') ?? '';
+    const webhookUrl = row?.webhookSecret && apiPublicUrl
+      ? `${apiPublicUrl}/webhooks/whatsapp/{tenantSlug}?secret=${row.webhookSecret}`
+      : null;
     return {
       tenantId,
       baseUrl: row?.baseUrl ?? null,
@@ -202,7 +229,10 @@ export class WhatsappService {
       hasApiKey: !!row?.apiKeyEnc,
       testMode: row?.testMode ?? true,
       enabled: row?.enabled ?? false,
-      cipherReady: true, // cipher se chequea on encrypt; si no, encryptKey lanza
+      botEnabled: row?.botEnabled ?? false,
+      webhookUrl,
+      webhookSecret: row?.webhookSecret ?? null,
+      cipherReady: true,
       updatedAt: row?.updatedAt.toISOString() ?? null,
     };
   }

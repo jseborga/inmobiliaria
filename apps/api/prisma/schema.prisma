@@ -119,6 +119,25 @@ enum OtpContext {
   // futuros: ACCOUNT_LOGIN, etc.
 }
 
+enum MessageDirection {
+  IN  // mensaje entrante (visitante → inmobiliaria)
+  OUT // mensaje saliente (inmobiliaria → visitante, automático o manual)
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum MessageChannel {
+  WHATSAPP
+  WEB_CHAT
+  TELEGRAM
+}
+
 /// Empresa inmobiliaria (tenant).
 model Tenant {
   id        String       @id @default(cuid())
@@ -144,6 +163,8 @@ model Tenant {
   aiUsage        AIUsage[]
   visits         Visit[]
   whatsapp       WhatsappIntegration?
+  chatMessages   ChatMessage[]
+  chatSessions   ChatSession[]
 
   @@map("tenants")
 }
@@ -495,7 +516,7 @@ model PhoneOtp {
 }
 
 /// Configuración de Evolution API por tenant. Se usa para mandar WhatsApp
-/// (OTPs por ahora; en Sprint 4 también el bot conversacional).
+/// (OTPs y bot conversacional).
 /// La apiKey se almacena encriptada (mismo cipher que las API keys de IA,
 /// AI_KEYS_SECRET).
 model WhatsappIntegration {
@@ -506,14 +527,75 @@ model WhatsappIntegration {
   instance   String?
   /// API key encriptada (apikey global o instance-token de Evolution).
   apiKeyEnc  String?  @map("api_key_enc")
+  /// Secreto para validar webhooks entrantes. Generado al primer save.
+  /// Evolution debe configurarse para mandar este secret en el webhook
+  /// (header `X-Webhook-Secret` o query `?secret=...`).
+  webhookSecret String? @map("webhook_secret")
   /// Cuando true, el sistema NO manda WhatsApp real — los mensajes se loggean.
   /// Útil para QA sin gastar la sesión de WhatsApp Web.
   testMode   Boolean  @default(true) @map("test_mode")
   /// Si la integración está habilitada (puede estar configurada pero pausada).
   enabled    Boolean  @default(false)
+  /// Si el bot conversacional debe responder automáticamente los mensajes
+  /// entrantes. Si false, los mensajes se loggean pero no hay respuesta auto
+  /// (la inmobiliaria los responde a mano).
+  botEnabled Boolean  @default(false) @map("bot_enabled")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
   tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("whatsapp_integrations")
+}
+
+/// Sesión de chat por phone+tenant. Mantiene contexto entre mensajes.
+/// Usado por el bot para no responder cada mensaje en aislamiento.
+model ChatSession {
+  id            String    @id @default(cuid())
+  tenantId      String    @map("tenant_id")
+  channel       MessageChannel
+  /// Identificador del visitante: teléfono normalizado para WhatsApp/Telegram,
+  /// session_id de cookie para WEB_CHAT.
+  externalId    String    @map("external_id")
+  /// Lead asociado si la sesión generó uno.
+  leadId        String?   @map("lead_id")
+  /// Última propiedad sobre la que se conversó (para context).
+  lastPropertyId String?  @map("last_property_id")
+  startedAt     DateTime  @default(now()) @map("started_at")
+  lastMessageAt DateTime  @default(now()) @map("last_message_at")
+  closedAt      DateTime? @map("closed_at")
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@unique([tenantId, channel, externalId])
+  @@index([tenantId, lastMessageAt])
+  @@map("chat_sessions")
+}
+
+/// Mensaje de chat (WhatsApp, web chat, Telegram). Cada uno apunta a una
+/// ChatSession. Conserva tanto entrantes como salientes para reconstruir el
+/// hilo en orden cronológico.
+model ChatMessage {
+  id           String           @id @default(cuid())
+  tenantId     String           @map("tenant_id")
+  sessionId    String           @map("session_id")
+  channel      MessageChannel
+  direction    MessageDirection
+  /// Cuerpo del mensaje (texto plano por ahora — multimedia en futuro).
+  body         String
+  status       MessageStatus    @default(PENDING)
+  /// ID del mensaje en el provider (Evolution, etc.) para correlacionar.
+  externalId   String?          @map("external_id")
+  /// Si la respuesta fue generada por el bot (vs. agente humano vía panel).
+  fromBot      Boolean          @default(false) @map("from_bot")
+  /// Metadata libre: el bot puede guardar acá las propiedades sugeridas, etc.
+  metadata     Json?
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("chat_messages")
 }

@@ -36,6 +36,8 @@ export interface UpdateWhatsappIntegrationInput {
   apiKey?: string | null;
   testMode?: boolean;
   enabled?: boolean;
+  botEnabled?: boolean;
+  rotateWebhookSecret?: boolean;
 }
 
 export async function updateMyWhatsappIntegration(

@@ -64,6 +64,12 @@ export interface WhatsappIntegrationView {
   hasApiKey: boolean;
   testMode: boolean;
   enabled: boolean;
+  /** Si el bot conversacional responde automáticamente los mensajes entrantes. */
+  botEnabled: boolean;
+  /** URL del webhook (con {tenantSlug} como placeholder) que la inmobiliaria
+   *  configura en Evolution. Incluye el secret en el query string. */
+  webhookUrl: string | null;
+  webhookSecret: string | null;
   cipherReady: boolean;
   updatedAt: string | null;
 }

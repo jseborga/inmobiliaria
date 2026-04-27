@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Save, Send, KeyRound, MessageCircle } from 'lucide-react';
+import { Bot, Copy, KeyRound, MessageCircle, RefreshCw, Save, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import type { WhatsappIntegrationView } from '@inmobiliaria/shared';
 import { Button } from '@/components/ui/button';
@@ -24,9 +24,11 @@ export function WhatsappSettingsForm({ initial }: Props) {
   const [apiKey, setApiKey] = useState('');
   const [testMode, setTestMode] = useState(initial.testMode);
   const [enabled, setEnabled] = useState(initial.enabled);
+  const [botEnabled, setBotEnabled] = useState(initial.botEnabled);
   const [testPhone, setTestPhone] = useState('');
   const [hasApiKey, setHasApiKey] = useState(initial.hasApiKey);
   const [maskedKey, setMaskedKey] = useState(initial.apiKeyMasked);
+  const [webhookSecret, setWebhookSecret] = useState(initial.webhookSecret);
 
   async function save() {
     setBusy(true);
@@ -36,6 +38,7 @@ export function WhatsappSettingsForm({ initial }: Props) {
         instance: instance.trim() || null,
         testMode,
         enabled,
+        botEnabled,
       };
       if (apiKey.trim()) payload.apiKey = apiKey.trim();
       const r = await updateMyWhatsappIntegration(payload);
@@ -46,6 +49,7 @@ export function WhatsappSettingsForm({ initial }: Props) {
       setApiKey('');
       setHasApiKey(r.data.hasApiKey);
       setMaskedKey(r.data.apiKeyMasked);
+      setWebhookSecret(r.data.webhookSecret);
       toast.success('Configuración guardada');
     } finally {
       setBusy(false);
@@ -197,7 +201,41 @@ export function WhatsappSettingsForm({ initial }: Props) {
             </p>
           </div>
         </label>
+        <label className="flex cursor-pointer items-start gap-3 rounded-md border p-3 hover:bg-muted/50">
+          <input
+            type="checkbox"
+            checked={botEnabled}
+            onChange={(e) => setBotEnabled(e.target.checked)}
+            disabled={busy}
+            className="mt-0.5"
+          />
+          <div>
+            <p className="flex items-center gap-1.5 text-sm font-medium">
+              <Bot className="h-3.5 w-3.5" />
+              Bot conversacional automático
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Cuando recibís un mensaje en WhatsApp, el bot responde automáticamente usando
+              IA + búsqueda de propiedades. Si está apagado, los mensajes entrantes quedan
+              en el panel para que vos los respondas a mano.
+            </p>
+          </div>
+        </label>
       </section>
+
+      {webhookSecret ? (
+        <WebhookSection
+          webhookUrl={initial.webhookUrl}
+          webhookSecret={webhookSecret}
+        />
+      ) : (
+        <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-medium">Webhook entrante todavía no configurado</p>
+          <p className="mt-1 text-xs">
+            Guardá la configuración (paso anterior) — el sistema genera un secret automáticamente.
+          </p>
+        </section>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
         <div className="flex flex-1 gap-2">
@@ -219,5 +257,88 @@ export function WhatsappSettingsForm({ initial }: Props) {
         </Button>
       </div>
     </div>
+  );
+}
+
+function WebhookSection({
+  webhookUrl,
+  webhookSecret,
+}: {
+  webhookUrl: string | null;
+  webhookSecret: string;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  function copy(text: string, label: string) {
+    void navigator.clipboard.writeText(text);
+    toast.success(`${label} copiado al portapapeles`);
+  }
+
+  async function rotate() {
+    if (
+      !confirm(
+        '¿Rotar el secret? El webhook actual deja de funcionar; tenés que actualizar Evolution con el nuevo.',
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      const r = await updateMyWhatsappIntegration({ rotateWebhookSecret: true });
+      if (!r.ok) toast.error(r.error.message);
+      else {
+        toast.success('Secret regenerado');
+        // El form de arriba se va a recargar con el nuevo valor en el next render
+        // (revalidatePath del server action). Mientras, refrescamos la pestaña:
+        location.reload();
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="space-y-3 rounded-lg border bg-card p-5">
+      <div>
+        <h2 className="text-base font-semibold">Webhook entrante (Evolution → tu sistema)</h2>
+        <p className="text-xs text-muted-foreground">
+          Configurá esta URL en Evolution para que los mensajes que recibís lleguen al bot.
+          En Evolution: Settings → Webhook → URL.
+        </p>
+      </div>
+      <div className="space-y-2">
+        <Label className="text-xs">URL (reemplazá el {'{tenantSlug}'} por tu slug real)</Label>
+        <div className="flex gap-2">
+          <Input
+            readOnly
+            value={webhookUrl ?? '(falta API_PUBLIC_URL en el server)'}
+            className="font-mono text-xs"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => copy(webhookUrl ?? '', 'URL')}
+            disabled={!webhookUrl}
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+        <Label className="text-xs">Secret (también podés mandarlo en header X-Webhook-Secret)</Label>
+        <div className="flex gap-2">
+          <Input readOnly value={webhookSecret} className="font-mono text-xs" />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => copy(webhookSecret, 'Secret')}
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={rotate} disabled={busy}>
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+    </section>
   );
 }
