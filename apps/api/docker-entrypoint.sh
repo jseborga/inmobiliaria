@@ -28,6 +28,34 @@ if [ -n "${PRISMA_RESOLVE_ROLLEDBACK:-}" ]; then
   unset IFS
 fi
 
+# Pre-instalación de extensiones idempotente (CREATE EXTENSION IF NOT EXISTS).
+# Aislado del `migrate deploy` para que si pgvector falla o crashea el backend
+# (P1017), el log muestre claramente cuál paso revienta antes de que Prisma
+# marque la migración como fallida otra vez. Idempotente: si la extensión ya
+# existe es no-op, y la sentencia equivalente dentro de 3_pgvector también.
+echo "[entrypoint] Diag A: ping a postgres..."
+if echo 'SELECT 1;' | node "$PRISMA_BIN" db execute --stdin --schema="$SCHEMA"; then
+  echo "[entrypoint] Diag A OK"
+else
+  echo "[entrypoint] Diag A FALLÓ — postgres no responde"
+fi
+
+echo "[entrypoint] Diag B: CREATE EXTENSION postgis..."
+if echo 'CREATE EXTENSION IF NOT EXISTS postgis;' \
+    | node "$PRISMA_BIN" db execute --stdin --schema="$SCHEMA"; then
+  echo "[entrypoint] Diag B OK (postgis disponible)"
+else
+  echo "[entrypoint] Diag B FALLÓ — postgis no instalado en la imagen"
+fi
+
+echo "[entrypoint] Diag C: CREATE EXTENSION vector..."
+if echo 'CREATE EXTENSION IF NOT EXISTS vector;' \
+    | node "$PRISMA_BIN" db execute --stdin --schema="$SCHEMA"; then
+  echo "[entrypoint] Diag C OK (pgvector disponible)"
+else
+  echo "[entrypoint] Diag C FALLÓ — pgvector no instalado en la imagen, o el .so crashea"
+fi
+
 echo "[entrypoint] Aplicando migraciones..."
 node "$PRISMA_BIN" migrate deploy --schema="$SCHEMA"
 
