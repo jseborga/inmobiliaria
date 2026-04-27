@@ -2,7 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, LayoutDashboard, Sparkles, Users } from 'lucide-react';
+import {
+  Building2,
+  CalendarCheck,
+  LayoutDashboard,
+  MessageCircle,
+  Sparkles,
+  Users,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
@@ -16,7 +23,9 @@ const ITEMS: NavItem[] = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/admin/properties', label: 'Propiedades', icon: Building2 },
   { href: '/admin/leads', label: 'Leads', icon: Users },
+  { href: '/admin/visits', label: 'Visitas', icon: CalendarCheck },
   { href: '/admin/settings/ai', label: 'IA y chatbot', icon: Sparkles },
+  { href: '/admin/settings/whatsapp', label: 'WhatsApp', icon: MessageCircle },
 ];
 
 export function AdminSidebar() {

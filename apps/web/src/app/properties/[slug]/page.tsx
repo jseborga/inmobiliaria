@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ImageGallery } from '@/components/properties/image-gallery';
 import { MediaViewer } from '@/components/properties/media-viewer';
 import { PropertyDetailMap } from '@/components/map/property-detail-map';
+import { VisitBookingModal } from '@/components/properties/visit-booking-modal';
 import { LeadForm } from '@/components/leads/lead-form';
 import { ApiError } from '@/lib/api';
 import { getPublicApi } from '@/lib/api/public';
@@ -160,10 +161,26 @@ export default async function PropertyDetailPage({
         <aside className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>¿Te interesa?</CardTitle>
+              <CardTitle>Agendá tu visita</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Validamos tu teléfono con un código por WhatsApp.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <VisitBookingModal
+                tenantSlug={tenantSlug}
+                propertyId={property.id}
+                propertyTitle={property.title}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>¿Otra consulta?</CardTitle>
               {tenant ? (
                 <p className="text-sm text-muted-foreground">
-                  Publicada por <span className="font-medium">{tenant.name}</span>
+                  Te responde <span className="font-medium">{tenant.name}</span>
                 </p>
               ) : null}
             </CardHeader>
