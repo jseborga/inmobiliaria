@@ -11,6 +11,23 @@ SCHEMA="$APP_DIR/prisma/schema.prisma"
 
 cd "$APP_DIR"
 
+# Recuperación de migraciones fallidas (Prisma P3009).
+# Si PRISMA_RESOLVE_ROLLEDBACK está seteada (coma-separada), se marca cada
+# migración como rolled-back para que `migrate deploy` la reintente.
+# Setear, deployar una vez, y QUITAR la variable.
+if [ -n "${PRISMA_RESOLVE_ROLLEDBACK:-}" ]; then
+  echo "[entrypoint] PRISMA_RESOLVE_ROLLEDBACK=$PRISMA_RESOLVE_ROLLEDBACK — marcando migraciones como rolled-back..."
+  IFS=','
+  for name in $PRISMA_RESOLVE_ROLLEDBACK; do
+    name_trim=$(echo "$name" | tr -d ' ')
+    [ -z "$name_trim" ] && continue
+    echo "[entrypoint]  → resolve --rolled-back $name_trim"
+    node "$PRISMA_BIN" migrate resolve --rolled-back "$name_trim" --schema="$SCHEMA" \
+      || echo "[entrypoint]  resolve $name_trim falló (sigo)"
+  done
+  unset IFS
+fi
+
 echo "[entrypoint] Aplicando migraciones..."
 node "$PRISMA_BIN" migrate deploy --schema="$SCHEMA"
 
