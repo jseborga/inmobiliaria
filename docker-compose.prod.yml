@@ -26,15 +26,19 @@
 
 services:
   postgres:
-    # Imagen custom: PostGIS oficial + pgvector instalado vía apt.
-    # Dockerfile en infra/postgres.Dockerfile. Necesitamos:
-    #  - PostGIS (búsqueda geoespacial de propiedades).
-    #  - pgvector (RAG semántico — embeddings de propiedades).
-    # En Easypanel: configurar el servicio Postgres como "Dockerfile" apuntando
-    # a infra/postgres.Dockerfile (build context = raíz del repo).
-    build:
-      context: .
-      dockerfile: infra/postgres.Dockerfile
+    # PostgreSQL 16 + PostGIS 3.4 + pgvector 0.7+ en una sola imagen pública.
+    # Necesitamos:
+    #  - PostGIS  (búsqueda geoespacial de propiedades, columna `location`)
+    #  - pgvector (RAG semántico — embeddings de propiedades)
+    #
+    # `garapadev/postgres-postgis-pgvector:16-stable` viene con Postgres 16.6,
+    # PostGIS 3.4.2 y pgvector 0.7.4 preinstalados — basta cambiar la imagen
+    # del servicio en Easypanel sin tocar volumes.
+    #
+    # Si en el futuro esta imagen queda sin mantener, tenés un Dockerfile
+    # custom de respaldo en infra/postgres.Dockerfile (postgis oficial + apt
+    # install postgresql-16-pgvector).
+    image: garapadev/postgres-postgis-pgvector:16-stable
     restart: unless-stopped
     environment:
       POSTGRES_DB: "${POSTGRES_DB:-inmobiliaria}"
