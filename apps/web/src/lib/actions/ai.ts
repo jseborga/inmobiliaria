@@ -57,17 +57,6 @@ export async function generatePropertyDescription(
   }
 }
 
-export interface AIProvidersStatus {
-  default: 'claude' | 'openai' | 'openrouter' | 'mock';
-  available: Array<'claude' | 'openai' | 'openrouter' | 'mock'>;
-}
-
-export async function getAIProvidersStatus(): Promise<AIProvidersStatus | null> {
-  await requireUser();
-  try {
-    const api = getServerApi({ cache: 'no-store' });
-    return await api.get<AIProvidersStatus>('/ai/providers');
-  } catch {
-    return null;
-  }
-}
+// El endpoint /ai/providers se eliminó en Sprint 1.5 — la config de providers
+// vive ahora en PlatformAISettings y la lee el super-admin desde su panel
+// (/platform-admin/ai-settings). El tenant no necesita esa info para usar IA.

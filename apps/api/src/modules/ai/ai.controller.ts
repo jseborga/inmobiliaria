@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -13,7 +12,6 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantOnlyGuard } from '../../common/guards/tenant-only.guard';
 import type { AuthenticatedTenantUser } from '../auth/types';
-import { AIService } from './ai.service';
 import { GeneratePropertyDescriptionDto } from './dto/generate-description.dto';
 import { PropertyDescriptionService } from './property-description.service';
 
@@ -21,23 +19,15 @@ import { PropertyDescriptionService } from './property-description.service';
  * Endpoints de IA para tenant users. Toda mutación que usa LLM debería pasar
  * por acá para centralizar logging, rate limiting (futuro) y selección de
  * provider/modelo.
+ *
+ * Nota: el diagnóstico de providers (qué provider/modelo está disponible)
+ * vive ahora en el panel super-admin (/platform-admin/ai-settings) — desde
+ * el Sprint 1.5 los providers se resuelven por tenant en cada llamada.
  */
 @Controller('ai')
 @UseGuards(TenantOnlyGuard)
 export class AIController {
-  constructor(
-    private readonly ai: AIService,
-    private readonly descriptions: PropertyDescriptionService,
-  ) {}
-
-  /** Diagnóstico: qué providers están cargados y cuál es el default. */
-  @Get('providers')
-  status() {
-    return {
-      default: this.ai.defaultProvider(),
-      available: this.ai.availableProviders(),
-    };
-  }
+  constructor(private readonly descriptions: PropertyDescriptionService) {}
 
   /**
    * Genera una descripción comercial para una propiedad existente.
