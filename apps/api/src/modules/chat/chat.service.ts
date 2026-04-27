@@ -153,7 +153,6 @@ export class ChatService {
       tenantId: opts.tenantId,
       channel: 'WHATSAPP',
       externalId: phone,
-      body: opts.text,
     });
     const sendResult = await this.whatsapp.send({
       tenantId: opts.tenantId,
