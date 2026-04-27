@@ -138,6 +138,12 @@ enum MessageChannel {
   TELEGRAM
 }
 
+enum NotificationKind {
+  LEAD_NEW
+  VISIT_REQUESTED
+  VISIT_CONFIRMED
+}
+
 /// Empresa inmobiliaria (tenant).
 model Tenant {
   id        String       @id @default(cuid())
@@ -163,6 +169,7 @@ model Tenant {
   aiUsage        AIUsage[]
   visits         Visit[]
   whatsapp       WhatsappIntegration?
+  telegram       TelegramIntegration?
   chatMessages   ChatMessage[]
   chatSessions   ChatSession[]
 
@@ -182,6 +189,10 @@ model User {
   role         UserRole   @default(AGENT)
   status       UserStatus @default(ACTIVE)
   lastLoginAt  DateTime?  @map("last_login_at")
+  /// chat_id de Telegram donde el sistema le manda notificaciones (lead nuevo,
+  /// visita agendada). Lo asocia el bot al recibir /start del agente. Null si
+  /// el agente no vinculó su Telegram.
+  telegramChatId String?  @map("telegram_chat_id")
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
 
@@ -598,4 +609,23 @@ model ChatMessage {
   @@index([sessionId, createdAt])
   @@index([tenantId, createdAt])
   @@map("chat_messages")
+}
+
+/// Configuración de bot Telegram por tenant. Se usa para mandar notificaciones
+/// internas a los agentes (lead nuevo, visita agendada, etc.).
+/// El botToken se almacena encriptado (mismo cipher AI_KEYS_SECRET).
+model TelegramIntegration {
+  tenantId    String   @id @map("tenant_id")
+  /// Token del bot (formato 123456:ABC-...).
+  botTokenEnc String?  @map("bot_token_enc")
+  /// Username del bot (sin @). Sirve para construir el link de pairing
+  /// `https://t.me/<botUsername>?start=<userId>`.
+  botUsername String?  @map("bot_username")
+  testMode    Boolean  @default(true) @map("test_mode")
+  enabled     Boolean  @default(false)
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("telegram_integrations")
 }

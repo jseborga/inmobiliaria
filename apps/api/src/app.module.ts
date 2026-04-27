@@ -16,6 +16,7 @@ import { LeadsModule } from './modules/leads/leads.module';
 import { PlatformAdminModule } from './modules/platform-admin/platform-admin.module';
 import { PropertiesModule } from './modules/properties/properties.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { TelegramModule } from './modules/telegram/telegram.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { VisitsModule } from './modules/visits/visits.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
@@ -39,6 +40,7 @@ import { PrismaModule } from './prisma/prisma.module';
     WhatsappModule,
     VisitsModule,
     ChatModule,
+    TelegramModule,
     HealthModule,
   ],
   providers: [
