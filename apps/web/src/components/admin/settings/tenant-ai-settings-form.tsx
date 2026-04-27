@@ -189,7 +189,6 @@ export function TenantAISettingsForm({ initial, usage }: Props) {
 
 function ModeBadge({
   mode,
-  defaultByPlan,
 }: {
   mode: 'DISABLED' | 'PLATFORM' | 'OWN';
   defaultByPlan: 'DISABLED' | 'PLATFORM' | 'OWN';

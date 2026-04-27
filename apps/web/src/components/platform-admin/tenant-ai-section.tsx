@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Save, Sparkles } from 'lucide-react';
+import { Save } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AIUsageMonthlySummary, TenantAISettingsView } from '@inmobiliaria/shared';
 import { Button } from '@/components/ui/button';
