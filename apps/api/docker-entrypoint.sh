@@ -48,6 +48,19 @@ else
   echo "[entrypoint] Diag B FALLÓ — postgis no instalado en la imagen"
 fi
 
+echo "[entrypoint] Diag C-pre: versión y extensiones disponibles..."
+# Truco: usamos RAISE EXCEPTION para forzar que el output con la info
+# aparezca en los logs (db execute no imprime SELECTs, pero sí imprime
+# los mensajes de error). El "fallo" del DO block es intencional.
+echo "DO \$\$ DECLARE v text; e text; BEGIN
+  SELECT version() INTO v;
+  SELECT string_agg(format('%s(installed=%s,default=%s)', name, COALESCE(installed_version,'-'), default_version), ', ' ORDER BY name)
+    INTO e FROM pg_available_extensions WHERE name IN ('vector','pgvector','postgis');
+  RAISE EXCEPTION 'DIAG: pg=% ext=[%]', v, e;
+END \$\$;" \
+  | node "$PRISMA_BIN" db execute --stdin --schema="$SCHEMA" 2>&1 \
+  | sed 's/^/[entrypoint][diag-info] /' || true
+
 echo "[entrypoint] Diag C: CREATE EXTENSION vector..."
 if echo 'CREATE EXTENSION IF NOT EXISTS vector;' \
     | node "$PRISMA_BIN" db execute --stdin --schema="$SCHEMA"; then
