@@ -16,6 +16,8 @@ import { PlatformAdminModule } from './modules/platform-admin/platform-admin.mod
 import { PropertiesModule } from './modules/properties/properties.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
+import { VisitsModule } from './modules/visits/visits.module';
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -33,6 +35,8 @@ import { PrismaModule } from './prisma/prisma.module';
     PropertiesModule,
     LeadsModule,
     AIModule,
+    WhatsappModule,
+    VisitsModule,
     HealthModule,
   ],
   providers: [
