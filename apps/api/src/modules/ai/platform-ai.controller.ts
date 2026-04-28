@@ -85,4 +85,14 @@ export class PlatformAIController {
   async embeddingsStatus() {
     return { ready: await this.embeddings.isReady() };
   }
+
+  /**
+   * Estado del índice semántico: cuántas propiedades hay en total, cuántas
+   * tienen embedding, cuántas faltan indexar y cuántas quedaron con un modelo
+   * distinto al configurado actualmente (necesitan reindex).
+   */
+  @Get('ai/embeddings/stats')
+  async embeddingsStats() {
+    return this.indexer.stats();
+  }
 }

@@ -56,6 +56,24 @@ export class EmbeddingsService {
   }
 
   /**
+   * Modelo configurado actualmente. Usado por PropertyIndexerService para
+   * detectar cambios de modelo y decidir si re-indexa. Devuelve null si no
+   * hay config (sin keys cargadas).
+   *
+   * NOTA: el modelo "real" devuelto por OpenAI puede tener un sufijo de
+   * versión (ej. text-embedding-3-small vs el que persistimos). Si en algún
+   * momento se hace estricto, comparar normalizando.
+   */
+  async currentModel(): Promise<string | null> {
+    try {
+      const cfg = await this.getPlatformConfig();
+      return cfg.model;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Genera el vector embedding para un texto. Devuelve null si la plataforma
    * no tiene embeddings configurados (caller debe hacer fallback).
    */

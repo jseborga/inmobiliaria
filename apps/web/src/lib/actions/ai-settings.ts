@@ -149,6 +149,24 @@ export async function getEmbeddingsStatus(): Promise<{ ready: boolean }> {
   }
 }
 
+export interface EmbeddingsStats {
+  total: number;
+  indexed: number;
+  missing: number;
+  currentModel: string | null;
+  staleModel: number;
+}
+
+export async function getEmbeddingsStats(): Promise<EmbeddingsStats | null> {
+  await requirePlatformAdmin();
+  try {
+    const api = getPlatformApi({ cache: 'no-store' });
+    return await api.get<EmbeddingsStats>('/platform-admin/ai/embeddings/stats');
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Tenant (OWNER/ADMIN)
 // ---------------------------------------------------------------------------

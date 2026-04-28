@@ -1,6 +1,11 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # Postgres 16 + PostGIS 3.4 + pgvector preinstalados.
+    # PostGIS lo necesita la búsqueda geoespacial (columna `location`).
+    # pgvector lo necesita el RAG semántico (columna `properties.embedding`).
+    # La imagen es la misma que usa docker-compose.prod.yml para evitar
+    # diferencias de extensiones entre dev y prod.
+    image: garapadev/postgres-postgis-pgvector:16-stable
     container_name: inmobiliaria-postgres
     restart: unless-stopped
     environment:

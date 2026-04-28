@@ -211,6 +211,53 @@ Se implementa con PostGIS (`ST_DWithin` + `ST_Distance`). Un trigger (`apps/api/
 pnpm --filter @inmobiliaria/api db:postgis-triggers
 ```
 
+### Búsqueda semántica / RAG (Sprint 2)
+
+`GET /api/public/properties?q=...` usa embeddings + similarity vectorial cuando la query del usuario tiene ≥ 4 caracteres y la plataforma tiene embeddings configurados. Si no, cae a búsqueda keyword (ILIKE).
+
+**Stack:**
+
+- Extensión `pgvector` (`CREATE EXTENSION vector`).
+- Columna `properties.embedding vector(1536)` — matchea OpenAI `text-embedding-3-small`.
+- Índice HNSW con cosine distance (`vector_cosine_ops`).
+- Imagen Postgres con pgvector + PostGIS: `garapadev/postgres-postgis-pgvector:16-stable` en `docker-compose.prod.yml`.
+
+**Prioridad de búsqueda en `publicList`:**
+
+1. `geoSearch` — si vienen `nearLat/nearLng/radiusKm` (PostGIS).
+2. `semanticSearch` — si `q.length ≥ 4` y `embeddings.isReady()`.
+3. Prisma normal con `ILIKE` — fallback (sin key configurada o si el embed de la query falla).
+
+**Indexado automático:**
+
+- `properties.create` → reindexa la propiedad nueva.
+- `properties.update` → reindexa SOLO si cambió `title/description/city/zone/type/operation` (no por price changes).
+- El indexer es **idempotente**: si la propiedad ya tiene embedding del mismo modelo configurado, hace skip silencioso. `force: true` lo evita.
+
+**Endpoints super-admin** (`/platform-admin`, requiere `PLATFORM` JWT):
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET  | `/ai/embeddings/status` | `{ ready: boolean }` — true si hay key + provider cargados |
+| GET  | `/ai/embeddings/stats`  | `{ total, indexed, missing, currentModel, staleModel }` |
+| POST | `/ai/reindex` | `{ onlyMissing: boolean }`. `true` (default) solo indexa las que no tienen embedding; `false` fuerza reindex completo (caro: 1 call/propiedad — usar cuando cambiás de modelo) |
+
+**Configuración:**
+
+Las keys de embeddings se cargan desde el panel del super-admin (`/platform-admin/ai-settings`). Decisión clave: **siempre se usa la key de plataforma para embeddings, nunca la del tenant** — propiedades indexadas y queries de búsqueda DEBEN usar el mismo modelo, sino los vectores no son comparables y el RAG se rompe. El costo se trackea en `AIUsage` con `feature=EMBEDDINGS, billable=false`.
+
+**RAG en el chatbot:**
+
+`ChatService.generateReply` también usa pgvector: para cada mensaje entrante embebe el texto y trae las top-5 propiedades del tenant (con similarity > 0.3) como contexto del LLM. El system prompt instruye al bot a recomendar 1-2 si hay match, o pedir más detalle si no.
+
+**Migrar a otro modelo / dimensión:**
+
+Si en el futuro se cambia el modelo a uno con dimensión distinta (ej. `text-embedding-3-large` = 3072 dims), hay que:
+
+1. Crear migración que haga `ALTER TABLE properties DROP COLUMN embedding; ADD COLUMN embedding vector(N);` y recrear el índice HNSW.
+2. Actualizar `embeddingsModel` en `/platform-admin/ai-settings`.
+3. Disparar reindex completo (`onlyMissing=false`).
+
 ## CRM de leads (Fase 6)
 
 Gestión de contactos comerciales capturados desde el marketplace o ingresados manualmente, con timeline de actividades por lead.
