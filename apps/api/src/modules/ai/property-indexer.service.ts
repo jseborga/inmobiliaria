@@ -45,6 +45,7 @@ export class PropertyIndexerService {
         city: true,
         zone: true,
         embeddingModel: true,
+        embeddedAt: true,
       },
     });
     if (!property) return;
@@ -52,12 +53,22 @@ export class PropertyIndexerService {
     const text = this.buildIndexText(property);
     if (!text) return;
 
+    // Skip si ya está indexada con el modelo actualmente configurado y no es force.
+    // Esto evita re-llamar a la API de embeddings (que cuesta plata) en updates
+    // que tocan campos no semánticos. La invalidación por cambio de campos
+    // semánticos la hace properties.service en el caller.
+    if (!opts.force && property.embeddedAt && property.embeddingModel) {
+      const currentModel = await this.embeddings.currentModel();
+      if (currentModel && currentModel === property.embeddingModel) {
+        this.logger.debug(`Skip ${propertyId}: ya indexada con ${currentModel}`);
+        return;
+      }
+    }
+
     try {
       const result = await this.embeddings.embed(text, { tenantId: property.tenantId });
       if (!result) return;
 
-      // Si el modelo no cambió y ya está indexado, podríamos saltear.
-      // Por simplicidad, siempre actualizamos cuando vino algo del provider.
       // El cliente Prisma no soporta vector(N) — usamos $executeRaw.
       const vectorLiteral = `[${result.vector.join(',')}]`;
       await this.prisma.raw.$executeRaw(Prisma.sql`
@@ -79,6 +90,9 @@ export class PropertyIndexerService {
   /**
    * Reindex masivo. El super-admin lo dispara desde el panel cuando cambia
    * de modelo o quiere refrescar. Procesa en lotes para no bloquear.
+   *
+   * onlyMissing=true (default) → solo propiedades sin embedding (incremental).
+   * onlyMissing=false → fuerza reindex de todas (caro: 1 call/propiedad).
    */
   async reindexAll(opts: { batchSize?: number; onlyMissing?: boolean } = {}): Promise<{
     total: number;
@@ -89,10 +103,9 @@ export class PropertyIndexerService {
     if (!ready) {
       throw new Error('Embeddings no configurados; revisá /platform-admin/ai-settings.');
     }
+    const onlyMissing = opts.onlyMissing !== false;
     const batchSize = opts.batchSize ?? 50;
-    const where = opts.onlyMissing
-      ? Prisma.sql`WHERE "embedding" IS NULL`
-      : Prisma.sql``;
+    const where = onlyMissing ? Prisma.sql`WHERE "embedding" IS NULL` : Prisma.sql``;
 
     const idsRows = await this.prisma.raw.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT id FROM "properties" ${where} ORDER BY created_at DESC
@@ -106,7 +119,10 @@ export class PropertyIndexerService {
       // Procesamos en serie dentro del batch para no martillar la API de embeddings.
       for (const id of batch) {
         try {
-          await this.indexProperty(id, { force: true });
+          // En reindex masivo no forzamos: si onlyMissing=true las que tienen
+          // embedding ya quedaron fuera del SELECT; si onlyMissing=false sí
+          // forzamos para regenerar (típicamente se usa al cambiar de modelo).
+          await this.indexProperty(id, { force: !onlyMissing });
           indexed++;
         } catch {
           skipped++;
@@ -115,6 +131,41 @@ export class PropertyIndexerService {
       this.logger.log(`Reindex progreso: ${i + batch.length}/${ids.length}`);
     }
     return { total: ids.length, indexed, skipped };
+  }
+
+  /**
+   * Stats rápidas del estado del índice. Útil para mostrar en el panel
+   * super-admin cuántas propiedades faltan indexar.
+   */
+  async stats(): Promise<{
+    total: number;
+    indexed: number;
+    missing: number;
+    currentModel: string | null;
+    staleModel: number;
+  }> {
+    const currentModel = await this.embeddings.currentModel();
+    const rows = await this.prisma.raw.$queryRaw<
+      Array<{ total: bigint; indexed: bigint; stale: bigint }>
+    >(Prisma.sql`
+      SELECT
+        COUNT(*)::bigint AS total,
+        COUNT(*) FILTER (WHERE "embedding" IS NOT NULL)::bigint AS indexed,
+        COUNT(*) FILTER (
+          WHERE "embedding" IS NOT NULL
+            AND "embedding_model" IS DISTINCT FROM ${currentModel ?? null}
+        )::bigint AS stale
+      FROM "properties"
+    `);
+    const total = Number(rows[0]?.total ?? 0);
+    const indexed = Number(rows[0]?.indexed ?? 0);
+    return {
+      total,
+      indexed,
+      missing: total - indexed,
+      currentModel,
+      staleModel: Number(rows[0]?.stale ?? 0),
+    };
   }
 
   // -------------------------------------------------------------------------

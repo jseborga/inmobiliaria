@@ -4,13 +4,14 @@ import { useState } from 'react';
 import { Database, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { reindexProperties } from '@/lib/actions/ai-settings';
+import { reindexProperties, type EmbeddingsStats } from '@/lib/actions/ai-settings';
 
 interface Props {
   embeddingsReady: boolean;
+  stats: EmbeddingsStats | null;
 }
 
-export function ReindexButton({ embeddingsReady }: Props) {
+export function ReindexButton({ embeddingsReady, stats }: Props) {
   const [busy, setBusy] = useState<'incremental' | 'full' | null>(null);
 
   async function run(mode: 'incremental' | 'full') {
@@ -61,6 +62,27 @@ export function ReindexButton({ embeddingsReady }: Props) {
           {embeddingsReady ? 'embeddings activos' : 'falta config'}
         </span>
       </div>
+
+      {stats && (
+        <dl className="grid grid-cols-2 gap-2 rounded-md bg-muted/40 px-3 py-2 text-xs sm:grid-cols-4">
+          <div>
+            <dt className="text-muted-foreground">Total</dt>
+            <dd className="font-medium tabular-nums">{stats.total}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Indexadas</dt>
+            <dd className="font-medium tabular-nums text-emerald-700">{stats.indexed}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Pendientes</dt>
+            <dd className="font-medium tabular-nums text-amber-700">{stats.missing}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Modelo viejo</dt>
+            <dd className="font-medium tabular-nums">{stats.staleModel}</dd>
+          </div>
+        </dl>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <Button
